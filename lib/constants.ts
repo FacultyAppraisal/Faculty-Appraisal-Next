@@ -1,3 +1,16 @@
+// Appraisal status constants (synced with backend src/constant/appraisal.ts)
+export const APPRAISAL_STATUS = {
+  PEDING: "Pending",
+  VERIFICATION_PENDING: "Verification Pending",
+  PORTFOLIO_MARKING_PENDING: "Portfolio Marks Pending",
+  INTERACTION_PENDING: "Interaction Pending",
+  MARKS_VERIFICATION_PENDING: "Marks Verification Pending",
+  COMPLETED: "Completed",
+  SENT_TO_DIRECTOR: "Sent to Director",
+} as const;
+
+export type AppraisalStatus = typeof APPRAISAL_STATUS[keyof typeof APPRAISAL_STATUS];
+
 // Department options based on backend constants
 export const DEPARTMENTS = [
   { label: 'Computer Engineering', value: 'computer' },
@@ -34,3 +47,4 @@ export type DesignationValue = typeof DESIGNATIONS[number]["value"];
 
 // Copyright text
 export const COPYRIGHT_TEXT = "© 2025 PCCOE. All rights reserved.";
+

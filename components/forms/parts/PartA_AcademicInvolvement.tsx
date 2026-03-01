@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ROLE_FACTOR, ROLE_MAX, PART_A_MAXES, PartAScoreKey } from "@/lib/forms/constants";
-import { DesignationValue } from "@/lib/constants";
+import { DesignationValue, APPRAISAL_STATUS } from "@/lib/constants";
 import { useCourses } from "@/context/CourseContext";
 import SectionCard from "../shared/SectionCard";
 import FormProgressBar from "../shared/FormProgressBar";
@@ -159,7 +159,7 @@ function PartAAcademicInvolvement({
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [formStatus, setFormStatus] = useState("DRAFT");
+  const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   const [manualSections, setManualSections] = useState<Record<PartAScoreKey, boolean>>({
@@ -228,8 +228,8 @@ function PartAAcademicInvolvement({
       try {
         const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
         const appraisal = (resp.data as any)?.data ?? resp.data;
-        setFormStatus(appraisal?.status ?? "DRAFT");
-      } catch { /* silently ignore – status defaults to DRAFT */ }
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
+      } catch { /* silently ignore – status defaults to Pending */ }
     };
     if (isInitialized) fetchStatus();
   }, [userId, isInitialized]);
@@ -326,7 +326,7 @@ function PartAAcademicInvolvement({
           setCourses(loadedCourses);
           setCourseMetrics(newCourseMetrics);
         }
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch (e) {
         console.error("Fetch Part A failed", e);
       } finally {
@@ -452,7 +452,7 @@ function PartAAcademicInvolvement({
 
   // --- SUBMIT → PUT /appraisal/:userId/part-a ---
   const handleSubmit = async () => {
-    if (formStatus !== "DRAFT") {
+    if (formStatus !== APPRAISAL_STATUS.PEDING) {
       setShowStatusModal(true);
       return;
     }
@@ -538,7 +538,7 @@ function PartAAcademicInvolvement({
   };
 
   if (isLoading) return <Loader message="Loading Academic Performance..." />;
-  const locked = formStatus !== "DRAFT";
+  const locked = formStatus !== APPRAISAL_STATUS.PEDING;
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6 text-[1.15rem]" style={{ lineHeight: 1.7 }}>

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { PART_D_MAX, PART_D_SELF_MAX } from "@/lib/forms/constants";
-import { DesignationValue } from "@/lib/constants";
+import { DesignationValue, APPRAISAL_STATUS } from "@/lib/constants";
 import SectionCard from "../shared/SectionCard";
 import FormProgressBar from "../shared/FormProgressBar";
 import FormLockedModal from "../shared/FormLockedModal";
@@ -69,7 +69,7 @@ function PartDPortfolio({
   const [departmentLevelPortfolio, setDepartmentLevelPortfolio] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formStatus, setFormStatus] = useState("DRAFT");
+  const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -126,7 +126,7 @@ function PartDPortfolio({
   };
 
   const totalScore = Math.min(PART_D_MAX, scores.self + scores.superior);
-  const locked = formStatus !== "DRAFT";
+  const locked = formStatus !== APPRAISAL_STATUS.PEDING;
 
   const selfMarksValue = formData.isAdministrativeRole
     ? formData.adminSelfAwardedMarks
@@ -160,7 +160,7 @@ function PartDPortfolio({
       try {
         const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
         const appraisal = resp.data?.data;
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch { /* silently ignore */ }
     };
     fetchStatus();
@@ -227,7 +227,7 @@ function PartDPortfolio({
           setInstituteLevelPortfolio(newInstitute);
           setDepartmentLevelPortfolio(newDepartment);
         }
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch (err) {
         console.error("Fetch Part D failed", err);
       } finally {

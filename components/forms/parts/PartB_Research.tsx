@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { PART_B_ROLE_MAX, PART_B_SECTION_MAXES, PART_B_WEIGHTS } from "@/lib/forms/constants";
-import { DesignationValue } from "@/lib/constants";
+import { DesignationValue, APPRAISAL_STATUS } from "@/lib/constants";
 import SectionCard from "../shared/SectionCard";
 import ScoreCard from "../shared/ScoreCard";
 import MetricField from "../shared/MetricField";
@@ -158,7 +158,7 @@ function PartBResearch({ userId, userDesignation }: PartBResearchProps) {
   const [verifiedTotalScore, setVerifiedTotalScore] = useState<number | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formStatus, setFormStatus] = useState("DRAFT");
+  const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -258,7 +258,7 @@ function PartBResearch({ userId, userDesignation }: PartBResearchProps) {
       try {
         const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
         const appraisal = resp.data?.data;
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch { /* silently ignore */ }
     };
     fetchStatus();
@@ -369,7 +369,7 @@ function PartBResearch({ userId, userDesignation }: PartBResearchProps) {
           setFormData(newFormData);
           setVerifiedTotalScore(d?.totalVerified ?? undefined);
         }
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch (err) {
         console.error("Fetch Part B failed", err);
       } finally {
@@ -396,7 +396,7 @@ function PartBResearch({ userId, userDesignation }: PartBResearchProps) {
 
   // PUT /appraisal/:userId/part-b
   const handleSubmit = async () => {
-    if (formStatus !== "DRAFT") {
+    if (formStatus !== APPRAISAL_STATUS.PEDING) {
       setShowStatusModal(true);
       return;
     }
@@ -503,7 +503,7 @@ function PartBResearch({ userId, userDesignation }: PartBResearchProps) {
 
 
   if (isLoading) return <Loader message="Loading research data..." />;
-  const locked = formStatus !== "DRAFT";
+  const locked = formStatus !== APPRAISAL_STATUS.PEDING;
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6 text-[1.15rem]" style={{ lineHeight: 1.7 }}>

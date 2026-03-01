@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { PART_C_ROLE_MAX, PART_C_SECTION_MAXES } from "@/lib/forms/constants";
-import { DesignationValue } from "@/lib/constants";
+import { DesignationValue, APPRAISAL_STATUS } from "@/lib/constants";
 import SectionCard from "../shared/SectionCard";
 import ScoreCard from "../shared/ScoreCard";
 import FormProgressBar from "../shared/FormProgressBar";
@@ -130,7 +130,7 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
   const [verifiedScore, setVerifiedScore] = useState<number | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formStatus, setFormStatus] = useState("DRAFT");
+  const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -215,7 +215,7 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
           });
           setVerifiedScore(d?.verifiedMarks ?? undefined);
         }
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch (err) {
         console.error("Fetch Part C failed", err);
       } finally {
@@ -246,7 +246,7 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
 
   // PUT /appraisal/:userId/part-c
   const handleSubmit = async () => {
-    if (formStatus !== "DRAFT") {
+    if (formStatus !== APPRAISAL_STATUS.PEDING) {
       setShowStatusModal(true);
       return;
     }
@@ -288,7 +288,7 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
   };
 
   if (isLoading) return <Loader message="Loading self-development data…" />;
-  const locked = formStatus !== "DRAFT";
+  const locked = formStatus !== APPRAISAL_STATUS.PEDING;
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6 text-[1.15rem]" style={{ lineHeight: 1.7 }}>

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { PART_E_MAX } from "@/lib/forms/constants";
+import { APPRAISAL_STATUS } from "@/lib/constants";
 import SectionCard from "../shared/SectionCard";
 import ScoreCard from "../shared/ScoreCard";
 import FormProgressBar from "../shared/FormProgressBar";
@@ -53,7 +54,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formStatus, setFormStatus] = useState("DRAFT");
+  const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -88,7 +89,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
       try {
         const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
         const appraisal = resp.data?.data;
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch { /* silently ignore */ }
     };
     fetchStatus();
@@ -127,7 +128,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(newFormData));
           setFormData(newFormData);
         }
-        setFormStatus(appraisal?.status ?? "DRAFT");
+        setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch (err) {
         console.error("Fetch Part E failed", err);
       } finally {
@@ -139,7 +140,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
 
   // PUT /appraisal/:userId/part-e
   const handleSubmit = async () => {
-    if (formStatus !== "DRAFT") {
+    if (formStatus !== APPRAISAL_STATUS.PEDING) {
       setShowStatusModal(true);
       return;
     }
@@ -161,7 +162,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
   };
 
   if (isLoading) return <Loader message="Loading contributions…" />;
-  const locked = formStatus !== "DRAFT";
+  const locked = formStatus !== APPRAISAL_STATUS.PEDING;
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6 text-[1.15rem]" style={{ lineHeight: 1.7 }}>
