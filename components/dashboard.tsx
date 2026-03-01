@@ -5,7 +5,10 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 interface QuickLink {
-  href: string;
+  href?: string;
+  onClick?: () => void;
+  loading?: boolean;
+  disabled?: boolean;
   icon: React.ReactNode;
   label: string;
   description: string;
@@ -66,24 +69,42 @@ export default function Dashboard({
             Quick Access
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {quickLinks.map((link, i) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="group bg-white/90 dark:bg-slate-900/80 p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-primary/10 hover:border-primary/30 animate-fade-in-up"
-                style={{ animationDelay: `${100 + i * 100}ms` }}
-              >
+            {quickLinks.map((link, i) => {
+              const cardClass = `group bg-white/90 dark:bg-slate-900/80 p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-primary/10 hover:border-primary/30 animate-fade-in-up${link.disabled ? ' opacity-60 cursor-not-allowed' : ''}`;
+              const inner = (
                 <div className="flex items-center space-x-4">
                   <div className="p-3 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors group-hover:rotate-6 transform duration-300">
                     {link.icon}
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">{link.label}</h3>
+                    <h3 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
+                      {link.loading ? 'Generating PDF…' : link.label}
+                    </h3>
                     <p className="text-sm text-muted-foreground">{link.description}</p>
                   </div>
                 </div>
-              </a>
-            ))}
+              );
+              return link.onClick ? (
+                <button
+                  key={i}
+                  onClick={link.disabled ? undefined : link.onClick}
+                  disabled={link.disabled}
+                  className={`w-full text-left ${cardClass}`}
+                  style={{ animationDelay: `${100 + i * 100}ms` }}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <a
+                  key={link.href ?? i}
+                  href={link.href}
+                  className={cardClass}
+                  style={{ animationDelay: `${100 + i * 100}ms` }}
+                >
+                  {inner}
+                </a>
+              );
+            })}
           </div>
         </div>
 

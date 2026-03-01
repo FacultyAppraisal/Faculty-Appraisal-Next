@@ -7,10 +7,6 @@ import {
   RefreshCw,
   ShieldAlert,
   FileText,
-  Archive,
-  Eye,
-  Trash2,
-  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,12 +47,6 @@ function PartFReview({ department, userId }: PartFReviewProps) {
   const [formStatus, setFormStatus] = useState("DRAFT");
   const [pdfMetadata, setPdfMetadata] = useState<PdfMetadata | null>(null);
   const [pdfExists, setPdfExists] = useState(false);
-  const [savingPdf, setSavingPdf] = useState(false);
-  const [showSavedPdfsModal, setShowSavedPdfsModal] = useState(false);
-  const [savedPdfs, setSavedPdfs] = useState<SavedPdf[]>([]);
-  const [loadingSavedPdfs, setLoadingSavedPdfs] = useState(false);
-  const [selectedPdfForDelete, setSelectedPdfForDelete] = useState<string | null>(null);
-  const [deletingPdf, setDeletingPdf] = useState(false);
   const [declarationAgreed, setDeclarationAgreed] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -89,20 +79,8 @@ function PartFReview({ department, userId }: PartFReviewProps) {
     }
   }, [department, userId]);
 
-  const fetchSavedPdfs = useCallback(async () => {
-    setLoadingSavedPdfs(true);
-    try {
-      const res = await axios.get(`${BACKEND}/${department}/${userId}/saved-pdfs`, { withCredentials: true });
-      setSavedPdfs(res.data?.pdfs ?? []);
-    } catch {
-      setSavedPdfs([]);
-    } finally {
-      setLoadingSavedPdfs(false);
-    }
-  }, [department, userId]);
-
   const generatePDF = useCallback(
-    async (force = false) => {
+    async () => {
       setLoading(true);
       setLoadingProgress(0);
       const tick = setInterval(
@@ -110,26 +88,13 @@ function PartFReview({ department, userId }: PartFReviewProps) {
         500
       );
       try {
-        const process = async (blob: Blob) => {
-          setPdfUrl(URL.createObjectURL(blob));
-          setPdfExists(true);
-          fetchPdfMetadata();
-        };
-
-        try {
-          const res = force
-            ? await axios.get(`${BACKEND}/${department}/${userId}/generate-doc`, { withCredentials: true, responseType: "blob" })
-            : await axios.get(`${BACKEND}/${department}/${userId}/faculty-pdf`, { withCredentials: true, responseType: "blob" });
-          await process(res.data);
-        } catch {
-          if (!force) {
-            // Fallback: generate fresh
-            const gen = await axios.get(`${BACKEND}/${department}/${userId}/generate-doc`, { withCredentials: true, responseType: "blob" });
-            await process(gen.data);
-          } else {
-            setPdfExists(false);
-          }
-        }
+        const res = await axios.get(
+          `${BACKEND}/${department}/${userId}/generate-doc`,
+          { withCredentials: true, responseType: 'blob' }
+        );
+        setPdfUrl(URL.createObjectURL(res.data));
+        setPdfExists(true);
+        fetchPdfMetadata();
       } catch {
         setPdfExists(false);
       } finally {
@@ -142,47 +107,9 @@ function PartFReview({ department, userId }: PartFReviewProps) {
   );
 
   useEffect(() => {
-    generatePDF();
     fetchFormStatus();
     fetchPdfMetadata();
-    fetchSavedPdfs();
-  }, [generatePDF, fetchFormStatus, fetchPdfMetadata, fetchSavedPdfs]);
-
-  const handleSavePdf = async () => {
-    setSavingPdf(true);
-    try {
-      await axios.post(`${BACKEND}/${department}/${userId}/save-pdf`, {}, { withCredentials: true });
-      fetchPdfMetadata();
-      generatePDF();
-      fetchSavedPdfs();
-    } catch (err) {
-      console.error("Save PDF failed", err);
-    } finally {
-      setSavingPdf(false);
-    }
-  };
-
-  const handleViewSaved = async (id: string) => {
-    try {
-      const res = await axios.get(`${BACKEND}/${department}/${userId}/view-saved-pdf/${id}`, { withCredentials: true, responseType: "blob" });
-      window.open(URL.createObjectURL(res.data), "_blank");
-    } catch (err) {
-      console.error("View PDF failed", err);
-    }
-  };
-
-  const handleDeleteSaved = async (id: string) => {
-    setDeletingPdf(true);
-    try {
-      await axios.delete(`${BACKEND}/${department}/${userId}/delete-saved-pdf/${id}`, { withCredentials: true });
-      setSelectedPdfForDelete(null);
-      fetchSavedPdfs();
-    } catch (err) {
-      console.error("Delete PDF failed", err);
-    } finally {
-      setDeletingPdf(false);
-    }
-  };
+  }, [fetchFormStatus, fetchPdfMetadata]);
 
   // PATCH /appraisal/:userId/declaration  then  PATCH /appraisal/:userId/submit
   const handleFreeze = async () => {
@@ -221,47 +148,16 @@ function PartFReview({ department, userId }: PartFReviewProps) {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            {pdfUrl && pdfExists && (
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="gap-2 py-2 px-4 text-base font-bold uppercase tracking-wider border-2 border-indigo-300 hover:bg-indigo-50"
-              >
-                <a href={pdfUrl} download={`${userId}_appraisal.pdf`}>
-                  <Download size={18} /> Download
-                </a>
-              </Button>
-            )}
             <Button
               size="sm"
               variant="outline"
               className="gap-2 py-2 px-4 text-base font-bold uppercase tracking-wider border-2 border-indigo-300 hover:bg-indigo-50"
-              onClick={() => setShowSavedPdfsModal(true)}
-            >
-              <Archive size={18} /> Archives
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2 py-2 px-4 text-base font-bold uppercase tracking-wider border-2 border-indigo-300 hover:bg-indigo-50"
-              onClick={() => generatePDF(true)}
+              onClick={() => generatePDF()}
               disabled={loading}
             >
               <RefreshCw size={18} className={loading ? "animate-spin" : ""} />{" "}
               {pdfExists ? "Regenerate Draft" : "Generate Draft"}
             </Button>
-            {pdfUrl && (
-              <Button
-                size="sm"
-                className="gap-2 py-2 px-4 text-base font-bold uppercase tracking-wider shadow-md bg-indigo-700 hover:bg-indigo-800 text-white"
-                onClick={handleSavePdf}
-                disabled={savingPdf}
-              >
-                <Save size={18} className={savingPdf ? "animate-pulse" : ""} />{" "}
-                {savingPdf ? "Saving…" : "Save to Profile"}
-              </Button>
-            )}
           </div>
         </div>
 
@@ -299,10 +195,22 @@ function PartFReview({ department, userId }: PartFReviewProps) {
           </div>
         )}
 
-        {/* PDF Preview */}
+        {/* PDF — always fullscreen overlay when ready */}
         {pdfUrl && pdfExists && !loading && (
-          <div className="w-full h-[60vh] rounded-lg border border-border overflow-hidden bg-muted/5 shadow-inner mb-6">
-            <iframe src={pdfUrl} className="w-full h-full" title="Appraisal PDF" />
+          <div className="fixed inset-0 z-50 bg-black flex flex-col">
+            <div className="flex items-center justify-between px-4 py-2 bg-indigo-900">
+              <span className="text-white font-bold uppercase tracking-widest text-sm">Appraisal PDF Preview</span>
+              <Button
+                asChild
+                size="sm"
+                className="gap-2 bg-indigo-600 hover:bg-indigo-500 text-white border-0"
+              >
+                <a href={pdfUrl} download={`${userId}_appraisal.pdf`}>
+                  <Download size={16} /> Download
+                </a>
+              </Button>
+            </div>
+            <iframe src={pdfUrl} className="flex-1 w-full border-0" title="Appraisal PDF" />
           </div>
         )}
 
@@ -314,7 +222,7 @@ function PartFReview({ department, userId }: PartFReviewProps) {
               variant="link"
               size="sm"
               className="mt-3 text-base uppercase font-black text-indigo-700 hover:text-indigo-900"
-              onClick={() => generatePDF(true)}
+              onClick={() => generatePDF()}
             >
               Generate Now
             </Button>
@@ -397,69 +305,6 @@ function PartFReview({ department, userId }: PartFReviewProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Saved PDFs Archive Dialog */}
-      <Dialog open={showSavedPdfsModal} onOpenChange={setShowSavedPdfsModal}>
-        <DialogContent className="max-w-2xl bg-card border-2 border-indigo-200">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-black uppercase tracking-widest">
-              Saved Appraisal Archives
-            </DialogTitle>
-          </DialogHeader>
-          {loadingSavedPdfs ? (
-            <Loader message="Loading Archives..." />
-          ) : savedPdfs.length > 0 ? (
-            <div className="space-y-3 mt-5 max-h-[50vh] overflow-y-auto pr-2">
-              {savedPdfs.map((pdf, i) => (
-                <div
-                  key={pdf._id ?? i}
-                  className="flex items-center justify-between gap-4 p-4 rounded-xl border-2 border-indigo-100 bg-indigo-50 hover:bg-indigo-100 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-base font-bold text-indigo-900 truncate uppercase">{pdf.filename || `Archive_${i + 1}`}</p>
-                    <p className="text-sm text-indigo-700 uppercase opacity-80 font-semibold">
-                      {pdf.appraisal_year} &bull;{" "}
-                      {pdf.upload_date ? new Date(pdf.upload_date).toLocaleDateString() : "N/A"}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button size="sm" variant="ghost" className="h-10 w-10 p-0 hover:bg-indigo-200" onClick={() => handleViewSaved(pdf._id)}>
-                      <Eye size={18} />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-10 w-10 p-0 text-destructive hover:text-destructive hover:bg-destructive/15" onClick={() => setSelectedPdfForDelete(pdf._id)}>
-                      <Trash2 size={18} />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-24 text-center opacity-50">
-              <Archive size={48} className="mx-auto mb-3 text-muted-foreground" />
-              <p className="text-base font-bold uppercase">No records found</p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirm Dialog */}
-      <Dialog open={!!selectedPdfForDelete} onOpenChange={(open) => !open && setSelectedPdfForDelete(null)}>
-        <DialogContent className="max-w-xs bg-card border-2 border-indigo-200">
-          <p className="text-base font-bold text-center uppercase py-6">Permanently delete this record?</p>
-          <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 h-10 text-base font-bold uppercase border-2" onClick={() => setSelectedPdfForDelete(null)}>
-              No
-            </Button>
-            <Button
-              variant="destructive"
-              className="flex-1 h-10 text-base font-bold uppercase"
-              onClick={() => selectedPdfForDelete && handleDeleteSaved(selectedPdfForDelete)}
-              disabled={deletingPdf}
-            >
-              {deletingPdf ? "..." : "Yes, Delete"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
