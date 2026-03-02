@@ -11,11 +11,13 @@ import {
   Eye,
   Trash2,
   Save,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { APPRAISAL_STATUS } from "@/lib/constants";
 import Loader from "@/components/loader";
+import { tokenManager } from "@/lib/api-client";
 
 const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
 
@@ -45,6 +47,7 @@ interface PartFReviewProps {
 // --- COMPONENT ---
 function PartFReview({ department, userId }: PartFReviewProps) {
   const [pdfUrl, setPdfUrl] = useState("");
+  const [pdfFullscreen, setPdfFullscreen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
@@ -103,7 +106,10 @@ function PartFReview({ department, userId }: PartFReviewProps) {
   }, [department, userId]);
 
   const generatePDF = useCallback(
-    async (force = false) => {
+    async () => {
+      const token = tokenManager.getToken();
+      if (!token || !userId) return;
+
       setLoading(true);
       setLoadingProgress(0);
       const tick = setInterval(
@@ -111,43 +117,32 @@ function PartFReview({ department, userId }: PartFReviewProps) {
         500
       );
       try {
-        const process = async (blob: Blob) => {
-          setPdfUrl(URL.createObjectURL(blob));
-          setPdfExists(true);
-          fetchPdfMetadata();
-        };
-
-        try {
-          const res = force
-            ? await axios.get(`${BACKEND}/${department}/${userId}/generate-doc`, { withCredentials: true, responseType: "blob" })
-            : await axios.get(`${BACKEND}/${department}/${userId}/faculty-pdf`, { withCredentials: true, responseType: "blob" });
-          await process(res.data);
-        } catch {
-          if (!force) {
-            // Fallback: generate fresh
-            const gen = await axios.get(`${BACKEND}/${department}/${userId}/generate-doc`, { withCredentials: true, responseType: "blob" });
-            await process(gen.data);
-          } else {
-            setPdfExists(false);
-          }
-        }
-      } catch {
+        const res = await fetch(`/api/appraisal/${userId}/pdf`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        const blob = await res.blob();
+        setPdfUrl(URL.createObjectURL(blob));
+        setPdfExists(true);
+        setPdfFullscreen(true);
+      } catch (err) {
+        console.error("[PartF generatePDF]", err);
         setPdfExists(false);
       } finally {
         clearInterval(tick);
         setLoading(false);
-        setLoadingProgress(0);
+        setLoadingProgress(100);
+        setTimeout(() => setLoadingProgress(0), 400);
       }
     },
-    [department, userId, fetchPdfMetadata]
+    [userId]
   );
 
   useEffect(() => {
-    generatePDF();
     fetchFormStatus();
     fetchPdfMetadata();
     fetchSavedPdfs();
-  }, [generatePDF, fetchFormStatus, fetchPdfMetadata, fetchSavedPdfs]);
+  }, [fetchFormStatus, fetchPdfMetadata, fetchSavedPdfs]);
 
   const handleSavePdf = async () => {
     setSavingPdf(true);
@@ -246,7 +241,7 @@ function PartFReview({ department, userId }: PartFReviewProps) {
               size="sm"
               variant="outline"
               className="gap-2 py-2 px-4 text-base font-bold uppercase tracking-wider border-2 border-indigo-300 hover:bg-indigo-50"
-              onClick={() => generatePDF(true)}
+              onClick={() => generatePDF()}
               disabled={loading}
             >
               <RefreshCw size={18} className={loading ? "animate-spin" : ""} />{" "}
@@ -300,10 +295,38 @@ function PartFReview({ department, userId }: PartFReviewProps) {
           </div>
         )}
 
-        {/* PDF Preview */}
+        {/* PDF Preview — button to reopen fullscreen */}
         {pdfUrl && pdfExists && !loading && (
-          <div className="w-full h-[60vh] rounded-lg border border-border overflow-hidden bg-muted/5 shadow-inner mb-6">
-            <iframe src={pdfUrl} className="w-full h-full" title="Appraisal PDF" />
+          <button
+            onClick={() => setPdfFullscreen(true)}
+            className="w-full mb-6 flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-indigo-300 bg-indigo-50 py-4 text-base font-bold text-indigo-700 uppercase hover:bg-indigo-100 transition-colors"
+          >
+            <FileText size={18} /> View PDF Fullscreen
+          </button>
+        )}
+
+        {/* Fullscreen PDF overlay */}
+        {pdfUrl && pdfFullscreen && (
+          <div className="fixed inset-0 z-50 flex flex-col bg-black">
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-900">
+              <span className="text-white font-bold uppercase tracking-wider text-sm">Appraisal PDF</span>
+              <div className="flex gap-3">
+                <a
+                  href={pdfUrl}
+                  download={`${userId}_appraisal.pdf`}
+                  className="flex items-center gap-1 rounded px-3 py-1 text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700"
+                >
+                  <Download size={14} /> Download
+                </a>
+                <button
+                  onClick={() => setPdfFullscreen(false)}
+                  className="flex items-center gap-1 rounded px-3 py-1 text-sm font-bold bg-gray-700 text-white hover:bg-gray-600"
+                >
+                  <X size={14} /> Close
+                </button>
+              </div>
+            </div>
+            <iframe src={pdfUrl} className="flex-1 w-full border-0" title="Appraisal PDF" />
           </div>
         )}
 
@@ -315,7 +338,7 @@ function PartFReview({ department, userId }: PartFReviewProps) {
               variant="link"
               size="sm"
               className="mt-3 text-base uppercase font-black text-indigo-700 hover:text-indigo-900"
-              onClick={() => generatePDF(true)}
+              onClick={() => generatePDF()}
             >
               Generate Now
             </Button>
