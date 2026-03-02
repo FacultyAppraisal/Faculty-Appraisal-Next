@@ -10,7 +10,7 @@ export default function VerificationTeamLayout({ children }: { children: ReactNo
 
   const header = useMemo(() => {
     if (pathname === "/verification-team/dashboard") {
-      return { title: "Verification Team Dashboard", description: "Faculty research submissions pending Part B verification" };
+      return { title: "Verification Team Dashboard", description: "" };
     }
     return { title: "Verification Team", description: "Research verification portal" };
   }, [pathname]);

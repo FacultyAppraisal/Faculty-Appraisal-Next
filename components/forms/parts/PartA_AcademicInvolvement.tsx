@@ -524,7 +524,8 @@ function PartAAcademicInvolvement({
           studentFeedback: scores.studentFeedback,
           ptgMeetings: scores.ptgMeetings,
         },
-        totalMarks: Number(finalScore),
+        totalClaimed: Number(finalScore),
+        totalVerified: 0,
       };
 
       await axios.put(`${BACKEND}/appraisal/${userId}/part-a`, payload, { withCredentials: true });

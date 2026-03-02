@@ -328,7 +328,7 @@ export function Sidebar({
   onToggle,
 }: SidebarProps) {
   const pathname = usePathname()
-  const { logout, isLoading } = useAuth()
+  const { logout, isLoading, user } = useAuth()
 
   const [internalOpen, setInternalOpen] = useState(false)
   const [internalExpanded, setInternalExpanded] = useState(false)
@@ -342,8 +342,27 @@ export function Sidebar({
   const toggleExpanded = onToggle ?? (() => setInternalExpanded((prev) => !prev))
 
   const config = useMemo<RoleConfig>(() => {
-    return ROLE_CONFIG[userRole] ?? ROLE_CONFIG.faculty
-  }, [userRole])
+    const baseConfig = ROLE_CONFIG[userRole] ?? ROLE_CONFIG.faculty
+    if (user?.isInVerificationPanel) {
+      // Inject paper verification section if user is in verification panel
+      return {
+        ...baseConfig,
+        sections: [
+          ...baseConfig.sections,
+          {
+            key: "paper-verification",
+            label: "Paper Verification",
+            icon: CheckSquare,
+            collapsible: true,
+            items: [
+              { icon: ClipboardList, label: "Verify Submissions", href: "/verification-team/dashboard" },
+            ],
+          },
+        ],
+      }
+    }
+    return baseConfig
+  }, [userRole, user?.isInVerificationPanel])
 
   const panelTitle = config.title
 

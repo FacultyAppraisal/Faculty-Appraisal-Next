@@ -7,6 +7,7 @@ export interface User {
   mobile?: string
   designation?: string
   status?: string
+  isInVerificationPanel?: boolean
   createdAt?: Date
 }
 

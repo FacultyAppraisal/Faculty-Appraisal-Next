@@ -21,6 +21,7 @@ export interface AuthUser {
   role: User["role"];
   department?: string;
   designation?: string;
+  isInVerificationPanel?: boolean;
 }
 
 interface AuthContextValue {
@@ -39,6 +40,7 @@ interface AuthContextValue {
     rolePath?: string;
   }>;
   logout: () => void;
+  syncUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -64,6 +66,33 @@ export default function AuthProvider({
       tokenManager.clearToken();
     }
   }, [token]);
+
+  const syncUser = useCallback(async () => {
+    if (!token) return;
+    try {
+      const { data } = await axios.get("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (data.success && data.user) {
+        const u = data.user;
+        setUser({
+          id: u.userId || u.id || "",
+          email: u.email,
+          name: u.name,
+          role: u.role as Role,
+          isInVerificationPanel: !!u.isInVerificationPanel,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to sync user state:", e);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (token && !user?.isInVerificationPanel) {
+      syncUser();
+    }
+  }, [token, syncUser]);
 
 
   const normalizeRolePath = useCallback((r?: string | null) => {
@@ -110,6 +139,7 @@ export default function AuthProvider({
           email: receivedUser.email,
           name: receivedUser.name || receivedUser.email.split("@")[0],
           role: receivedUser.role as Role,
+          isInVerificationPanel: !!receivedUser.isInVerificationPanel,
         };
         //clear everything related to auth in localStorage to prevent stale data issues
         localStorage.clear();
@@ -159,8 +189,9 @@ export default function AuthProvider({
       isAuthenticated: !!token,
       login,
       logout,
+      syncUser,
     }),
-    [user, token, isLoading, login, logout]
+    [user, token, isLoading, login, logout, syncUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

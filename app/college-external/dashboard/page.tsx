@@ -74,9 +74,9 @@ export default function CollegeExternalDashboardPage() {
     >
       {/* Stats */}
       <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard title="Assigned Faculty" value={faculty.length} icon={Users}        color="primary" />
-        <StatCard title="Evaluated"         value={evaluated}       icon={CheckSquare} color="accent" />
-        <StatCard title="Pending"           value={pending}         icon={Clock}       color="secondary" />
+        <StatCard title="Assigned Faculty" value={faculty.length} icon={Users} color="primary" />
+        <StatCard title="Evaluated" value={evaluated} icon={CheckSquare} color="accent" />
+        <StatCard title="Pending" value={pending} icon={Clock} color="secondary" />
       </motion.div>
 
       {/* Filters */}

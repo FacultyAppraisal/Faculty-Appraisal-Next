@@ -213,7 +213,7 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
             phdThesisSubmitted: d.phdGuided?.submitted ?? 0,
             phdScholarsGuiding: d.phdGuided?.ongoing ?? 0,
           });
-          setVerifiedScore(d?.verifiedMarks ?? undefined);
+          setVerifiedScore(d?.totalVerified ?? undefined);
         }
         setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch (err) {
@@ -275,7 +275,8 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
           submitted: formData.phdThesisSubmitted,
           ongoing: formData.phdScholarsGuiding,
         },
-        totalMarks: totalScore,
+        totalClaimed: totalScore,
+        totalVerified: 0,
       };
       await axios.put(`${BACKEND}/appraisal/${userId}/part-c`, payload, { withCredentials: true });
       setSubmitSuccess(true);

@@ -255,7 +255,8 @@ function PartDPortfolio({
         isAdministrativeRole: formData.isAdministrativeRole,
         administrativeRole: formData.administrativeRole,
         adminSelfAwardedMarks: formData.adminSelfAwardedMarks,
-        totalMarks: totalScore,
+        totalClaimed: scores.self,
+        totalVerified: 0,
       };
       await axios.put(`${BACKEND}/appraisal/${userId}/part-d`, payload, { withCredentials: true });
       setSubmitSuccess(true);
