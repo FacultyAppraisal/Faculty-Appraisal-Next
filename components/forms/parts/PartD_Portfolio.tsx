@@ -8,6 +8,7 @@ import { DesignationValue, APPRAISAL_STATUS } from "@/lib/constants";
 import SectionCard from "../shared/SectionCard";
 import FormProgressBar from "../shared/FormProgressBar";
 import FormLockedModal from "../shared/FormLockedModal";
+import SuccessModal from "../shared/SuccessModal";
 import Loader from "@/components/loader";
 import axios, { AxiosError } from "axios";
 
@@ -71,7 +72,7 @@ function PartDPortfolio({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const STORAGE_KEY = `partD_data_${userId}`;
@@ -255,10 +256,11 @@ function PartDPortfolio({
         isAdministrativeRole: formData.isAdministrativeRole,
         administrativeRole: formData.administrativeRole,
         adminSelfAwardedMarks: formData.adminSelfAwardedMarks,
-        totalMarks: totalScore,
+        totalClaimed: scores.self,
+        totalVerified: 0,
       };
       await axios.put(`${BACKEND}/appraisal/${userId}/part-d`, payload, { withCredentials: true });
-      setSubmitSuccess(true);
+      setShowSuccessModal(true);
     } catch (err) {
       const axErr = err as AxiosError<{ message?: string }>;
       setSubmitError(axErr.response?.data?.message ?? axErr.message ?? "Save Failed");
@@ -386,11 +388,6 @@ function PartDPortfolio({
         </div>
       </SectionCard>
 
-      {submitSuccess && (
-        <p className="text-base text-center text-indigo-700 font-semibold italic">
-          Portfolio details saved.
-        </p>
-      )}
       {submitError && (
         <p className="text-base text-center text-destructive font-extrabold">{submitError}</p>
       )}
@@ -409,6 +406,11 @@ function PartDPortfolio({
       {showStatusModal && (
         <FormLockedModal formStatus={formStatus} onClose={() => setShowStatusModal(false)} />
       )}
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        message="Portfolio details saved successfully!"
+      />
     </div>
   );
 }

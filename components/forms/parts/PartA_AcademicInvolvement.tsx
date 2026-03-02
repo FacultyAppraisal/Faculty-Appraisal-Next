@@ -9,6 +9,7 @@ import SectionCard from "../shared/SectionCard";
 import FormProgressBar from "../shared/FormProgressBar";
 import CourseManagementHeader from "../shared/CourseManagementHeader";
 import FormLockedModal from "../shared/FormLockedModal";
+import SuccessModal from "../shared/SuccessModal";
 import Loader from "@/components/loader";
 import axios, { AxiosError } from "axios";
 
@@ -161,6 +162,7 @@ function PartAAcademicInvolvement({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const [manualSections, setManualSections] = useState<Record<PartAScoreKey, boolean>>({
     resultAnalysis: false,
@@ -524,11 +526,12 @@ function PartAAcademicInvolvement({
           studentFeedback: scores.studentFeedback,
           ptgMeetings: scores.ptgMeetings,
         },
-        totalMarks: Number(finalScore),
+        totalClaimed: Number(finalScore),
+        totalVerified: 0,
       };
 
       await axios.put(`${BACKEND}/appraisal/${userId}/part-a`, payload, { withCredentials: true });
-      alert("Performance data saved successfully!");
+      setShowSuccessModal(true);
     } catch (e) {
       const err = e as AxiosError<{ message?: string }>;
       setSubmitError(err.response?.data?.message ?? (err as Error).message ?? "Save Failed");
@@ -795,6 +798,11 @@ function PartAAcademicInvolvement({
       {showStatusModal && (
         <FormLockedModal formStatus={formStatus} onClose={() => setShowStatusModal(false)} />
       )}
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        message="Performance data saved successfully!"
+      />
     </div>
   );
 }

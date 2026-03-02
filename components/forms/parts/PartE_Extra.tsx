@@ -9,6 +9,7 @@ import SectionCard from "../shared/SectionCard";
 import ScoreCard from "../shared/ScoreCard";
 import FormProgressBar from "../shared/FormProgressBar";
 import FormLockedModal from "../shared/FormLockedModal";
+import SuccessModal from "../shared/SuccessModal";
 import Loader from "@/components/loader";
 import axios, { AxiosError } from "axios";
 
@@ -17,7 +18,7 @@ const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000")
 // --- TYPES ---
 interface ExtraFormData {
   contributions: string;
-  selfAwardedMarks: number;
+  totalClaimed: number;
 }
 
 interface PartEExtraProps {
@@ -42,21 +43,21 @@ const PART_E_GUIDELINE =
 // Both fields are optional since Part E covers extra-ordinary contributions only.
 const SECTION_CONFIG = [
   { name: "Contributions Description", key: "contributions" as const, mandatory: false },
-  { name: "Self-Awarded Marks", key: "selfAwardedMarks" as const, mandatory: false },
+  { name: "Total Claimed Marks", key: "totalClaimed" as const, mandatory: false },
 ];
 
 // --- COMPONENT ---
 function PartEExtra({ userId }: PartEExtraProps) {
   const [formData, setFormData] = useState<ExtraFormData>({
     contributions: "",
-    selfAwardedMarks: 0,
+    totalClaimed: 0,
   });
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formStatus, setFormStatus] = useState(APPRAISAL_STATUS.PEDING);
   const [showStatusModal, setShowStatusModal] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const STORAGE_KEY = `partE_data_${userId}`;
@@ -80,7 +81,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
   // Progress
   let interactedCount = 0;
   if (formData.contributions.trim().length > 0) interactedCount++;
-  if (formData.selfAwardedMarks > 0) interactedCount++;
+  if (formData.totalClaimed > 0) interactedCount++;
   const progressPercent = (interactedCount / 2) * 100;
 
   // ── Always fetch the latest status from backend (independent of data cache) ──
@@ -106,7 +107,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
             const parsed = JSON.parse(saved);
             const hasData = parsed && (
               parsed.contributions?.trim().length > 0 ||
-              parsed.selfAwardedMarks > 0
+              parsed.totalClaimed > 0
             );
             if (hasData) {
               setIsLoading(false);
@@ -121,8 +122,8 @@ function PartEExtra({ userId }: PartEExtraProps) {
         const d = appraisal?.partE;
         if (d) {
           const newFormData: ExtraFormData = {
-            contributions: d.bullet_points ?? "",
-            selfAwardedMarks: d.total_marks ?? 0,
+            contributions: d.bulletPoints ?? "",
+            totalClaimed: d.totalClaimed ?? 0,
           };
 
           localStorage.setItem(STORAGE_KEY, JSON.stringify(newFormData));
@@ -148,11 +149,12 @@ function PartEExtra({ userId }: PartEExtraProps) {
     setSubmitError(null);
     try {
       const payload = {
-        total_marks: formData.selfAwardedMarks,
-        bullet_points: formData.contributions,
+        bulletPoints: formData.contributions,
+        totalClaimed: formData.totalClaimed,
+        totalVerified: 0,
       };
       await axios.put(`${BACKEND}/appraisal/${userId}/part-e`, payload, { withCredentials: true });
-      setSubmitSuccess(true);
+      setShowSuccessModal(true);
     } catch (err) {
       const axErr = err as AxiosError<{ message?: string }>;
       setSubmitError(axErr.response?.data?.message ?? axErr.message ?? "Save Failed");
@@ -172,7 +174,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
         <TransparencyGuideline formula={PART_E_GUIDELINE} />
         <div className="space-y-5">
           <div>
-            <label className="block text-base font-extrabold text-indigo-900 uppercase tracking-widest mb-2 px-1 flex items-center gap-2">
+            <label className="flex items-center gap-2 text-base font-extrabold text-indigo-900 uppercase tracking-widest mb-2 px-1">
               <span className="w-2 h-2 rounded-full bg-indigo-700" />
               Contributions Description &amp; Highlights (Required in Bulleted Form)
             </label>
@@ -189,7 +191,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
           <div className="flex items-center justify-between py-3 border-t border-indigo-100 pt-5">
             <div>
               <p className="text-lg font-extrabold text-indigo-900 uppercase tracking-tight">
-                Self-Awarded Marks
+                Total Claimed Marks
               </p>
               <p className="text-base font-semibold text-indigo-700 uppercase tracking-wider mt-1">
                 Maximum {PART_E_MAX} points
@@ -201,13 +203,13 @@ function PartEExtra({ userId }: PartEExtraProps) {
               max={PART_E_MAX}
               disabled={locked}
               placeholder="Enter marks"
-              aria-label="Self-Awarded Marks for Extra Contributions"
+              aria-label="Total Claimed Marks for Extra Contributions"
               onWheel={(e) => e.currentTarget.blur()}
-              value={formData.selfAwardedMarks === 0 ? "" : formData.selfAwardedMarks}
+              value={formData.totalClaimed === 0 ? "" : formData.totalClaimed}
               onChange={(e) =>
                 setFormData((p) => ({
                   ...p,
-                  selfAwardedMarks: Math.min(PART_E_MAX, Math.max(0, Number(e.target.value))),
+                  totalClaimed: Math.min(PART_E_MAX, Math.max(0, Number(e.target.value))),
                 }))
               }
               className="w-32 rounded-lg border-2 border-indigo-300 bg-white px-4 py-2 text-xl text-right font-black tabular-nums text-indigo-900 focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:border-indigo-700 transition [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none shadow-sm placeholder:text-xs placeholder:font-normal placeholder:text-slate-900"
@@ -219,7 +221,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
       <SectionCard title="Score Summary">
         <ScoreCard
           label="Extra Contributions Score"
-          score={formData.selfAwardedMarks}
+          score={formData.totalClaimed}
           total={PART_E_MAX}
         />
         {/* Score After Verification — hidden until enabled */}
@@ -233,11 +235,6 @@ function PartEExtra({ userId }: PartEExtraProps) {
         </div>
       </SectionCard>
 
-      {submitSuccess && (
-        <p className="text-base text-center text-indigo-700 font-semibold italic">
-          Contributions saved successfully.
-        </p>
-      )}
       {submitError && (
         <p className="text-base text-center text-destructive font-extrabold">{submitError}</p>
       )}
@@ -256,6 +253,11 @@ function PartEExtra({ userId }: PartEExtraProps) {
       {showStatusModal && (
         <FormLockedModal formStatus={formStatus} onClose={() => setShowStatusModal(false)} />
       )}
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        message="Extraordinary contributions saved successfully!"
+      />
     </div>
   );
 }
