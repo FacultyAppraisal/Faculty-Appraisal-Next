@@ -14,6 +14,8 @@ import axios from 'axios'
 import type { User } from '@/lib/types'
 import { useAuth } from '@/app/AuthProvider'
 
+const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000').replace(/\/$/, '')
+
 interface VerifierRow {
   id: string
   verifierName: string
@@ -73,9 +75,16 @@ export default function VerificationTeamPage() {
 
     try {
       setIsLoadingCommittee(true)
-      const response = await apiClient.get(`/admin/verification-team/${department}`) as { success: boolean; data?: { verificationTeam: any[] } }
-      if (response.success && Array.isArray(response.data?.verificationTeam) && response.data.verificationTeam.length > 0) {
-        const existingRows: VerifierRow[] = response.data.verificationTeam.map((team: any, index: number) => ({
+      const response = await axios.get(
+        `${BACKEND}/admin/verification-team/${department}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+      if (response.data.success && Array.isArray(response.data.data?.verificationTeam) && response.data.data.verificationTeam.length > 0) {
+        const existingRows: VerifierRow[] = response.data.data.verificationTeam.map((team: any, index: number) => ({
           id: `verifier-${index + 1}`,
           verifierId: team.verifier.userId,
           verifierName: team.verifier.name,
@@ -311,13 +320,21 @@ export default function VerificationTeamPage() {
       }
       console.log('Submitting Verification Team Payload:', payload)
       
-      const response = await apiClient.post('/admin/verification-team', payload) as { success: boolean; message?: string }
-      if (response.success) {
-        toast({ title: 'Success', description: response.message || 'Verification committee created successfully' })
+      const response = await axios.post(
+        `${BACKEND}/admin/verification-team`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+      if (response.data.success) {
+        toast({ title: 'Success', description: response.data.message || 'Verification committee created successfully' })
         setVerifierRows([])
         setSelectedDepartment('')
       } else {
-        toast({ title: 'Error', description: response.message || 'Failed to create verification committee' })
+        toast({ title: 'Error', description: response.data.message || 'Failed to create verification committee' })
       }
     } catch (error: any) {
       console.error('Error creating verification committee:', error)

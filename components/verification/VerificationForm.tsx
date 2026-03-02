@@ -4,22 +4,20 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios, { AxiosError } from "axios";
 import {
-    Save,
     CheckSquare,
     AlertCircle,
     ArrowLeft,
     ChevronRight,
     Calculator,
-    MessageSquare,
     User as UserIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import Loader from "@/components/loader";
 import SectionCard from "../forms/shared/SectionCard";
 import MetricField from "../forms/shared/MetricField";
 import ScoreCard from "../forms/shared/ScoreCard";
 import { PART_B_WEIGHTS } from "@/lib/forms/constants";
+import { useAuth } from "@/app/AuthProvider";
 
 const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
 
@@ -41,6 +39,69 @@ const CADRE_LIMITS = {
     "Associate Professor": 300,
     "Assistant Professor": 210,
     "default": 210,
+};
+
+// Weight mapping for calculating claimed marks (count * weight)
+const WEIGHTS: Record<string, number> = {
+    // Papers
+    "papers_sci": 100,
+    "papers_esci": 50,
+    "papers_scopus": 50,
+    "papers_ugc": 10,
+    "papers_other": 5,
+    // Conferences
+    "conferences_scopus": 20,
+    "conferences_other": 10,
+    // Book Chapters
+    "bookChapters_scopus": 20,
+    "bookChapters_other": 10,
+    // Books
+    "books_intlIndexed": 50,
+    "books_intlNational": 30,
+    "books_local": 10,
+    // Citations
+    "citations_wos": 1,
+    "citations_scopus": 1,
+    "citations_googleScholar": 0.5,
+    // Copyrights
+    "copyrights_individualRegistered": 10,
+    "copyrights_individualGranted": 20,
+    "copyrights_instituteRegistered": 5,
+    "copyrights_instituteGranted": 10,
+    // Patents
+    "patents_individualRegistered": 10,
+    "patents_individualPublished": 20,
+    "patents_individualGranted": 50,
+    "patents_individualCommercialized": 100,
+    "patents_instituteRegistered": 5,
+    "patents_institutePublished": 10,
+    "patents_instituteGranted": 30,
+    "patents_instituteCommercialized": 50,
+    // Grants
+    "grants_research": 50,
+    "grants_nonResearch": 20,
+    "revenueTraining": 10,
+    // Products
+    "products_commercialized": 100,
+    "products_developed": 50,
+    "products_poc": 30,
+    // Startup
+    "startup_revenue": 100,
+    "startup_funding": 80,
+    "startup_product": 60,
+    "startup_poc": 40,
+    "startup_registered": 20,
+    // Awards
+    "awards_international": 50,
+    "awards_government": 40,
+    "awards_national": 30,
+    "awards_intlFellowship": 40,
+    "awards_nationalFellowship": 30,
+    // Industry Interaction
+    "industryInteraction_activeMou": 20,
+    "industryInteraction_collaboration": 30,
+    // Placement
+    "placement": 10,
 };
 
 // --- TYPES ---
@@ -65,11 +126,12 @@ export default function VerificationForm() {
     const router = useRouter();
     const facultyId = params.facultyId as string;
     const department = params.department as string;
+    const { token } = useAuth();
 
     const [faculty, setFaculty] = useState<FacultyData | null>(null);
     const [originalData, setOriginalData] = useState<any>(null);
     const [verifiedScores, setVerifiedScores] = useState<VerifiedScores>({});
-    const [remarks, setRemarks] = useState("");
+    const [manualFinalTotal, setManualFinalTotal] = useState<number | null>(null);
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -77,37 +139,229 @@ export default function VerificationForm() {
 
     // Fetch faculty data and their appraisal
     const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const [userResp, appraisalResp] = await Promise.all([
-                axios.get(`${BACKEND}/users/${facultyId}`, { withCredentials: true }),
-                axios.get(`${BACKEND}/appraisal/${facultyId}`, { withCredentials: true })
-            ]);
+        if (!token) {
+            setError("Authentication required");
+            setLoading(false);
+            return;
+        }
 
-            const userData = userResp.data;
-            const appraisal = appraisalResp.data?.data;
+        setLoading(true);
+        setError(null);
+        try {
+            const response = await axios.get(
+                `${BACKEND}/verification/part-b/${facultyId}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (!response.data.success) {
+                setError(response.data.message || "Failed to load verification data");
+                return;
+            }
+
+            const { faculty: facultyData, partB, appraisalStatus } = response.data.data;
 
             setFaculty({
-                id: userData.id,
-                name: userData.name,
-                role: userData.role,
-                department: userData.department,
+                id: facultyData.userId,
+                name: facultyData.name,
+                role: facultyData.designation,
+                department: facultyData.department,
             });
 
-            setOriginalData(appraisal?.partB || {});
-            setRemarks(appraisal?.partB?.verificationRemarks || "");
+            setOriginalData(partB || {});
 
-            // Map existing verified marks if any
+            // Pre-fill verified marks with claimed values (count * weight) or existing verified values
             const existing: VerifiedScores = {};
-            // This mapping depends on backend schema, assume flat structure for now or map correctly
-            // Logic to populate verifiedScores from appraisal.partB...
-            setVerifiedScores({});
+            if (partB) {
+                // Map papers
+                if (partB.papers) {
+                    Object.keys(partB.papers).forEach(key => {
+                        const item = partB.papers[key];
+                        const fieldName = `papers_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        // Use verified if exists and not 0, otherwise use calculated claimed
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map conferences
+                if (partB.conferences) {
+                    Object.keys(partB.conferences).forEach(key => {
+                        const item = partB.conferences[key];
+                        const fieldName = `conferences_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map bookChapters
+                if (partB.bookChapters) {
+                    Object.keys(partB.bookChapters).forEach(key => {
+                        const item = partB.bookChapters[key];
+                        const fieldName = `bookChapters_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map books
+                if (partB.books) {
+                    Object.keys(partB.books).forEach(key => {
+                        const item = partB.books[key];
+                        const fieldName = `books_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map citations
+                if (partB.citations) {
+                    Object.keys(partB.citations).forEach(key => {
+                        const item = partB.citations[key];
+                        const fieldName = `citations_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map copyrights
+                if (partB.copyrights) {
+                    Object.keys(partB.copyrights).forEach(key => {
+                        const item = partB.copyrights[key];
+                        const fieldName = `copyrights_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map patents
+                if (partB.patents) {
+                    Object.keys(partB.patents).forEach(key => {
+                        const item = partB.patents[key];
+                        const fieldName = `patents_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map grants
+                if (partB.grants) {
+                    Object.keys(partB.grants).forEach(key => {
+                        const item = partB.grants[key];
+                        const fieldName = `grants_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map revenueTraining (single field)
+                if (partB.revenueTraining) {
+                    const fieldName = 'revenueTraining';
+                    const weight = WEIGHTS[fieldName] || 0;
+                    const calculatedClaimed = (partB.revenueTraining.count || 0) * weight;
+                    const marks = (partB.revenueTraining.verified !== undefined && partB.revenueTraining.verified !== 0) 
+                        ? partB.revenueTraining.verified 
+                        : calculatedClaimed;
+                    existing[fieldName] = { marks };
+                }
+                // Map products
+                if (partB.products) {
+                    Object.keys(partB.products).forEach(key => {
+                        const item = partB.products[key];
+                        const fieldName = `products_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map startup
+                if (partB.startup) {
+                    Object.keys(partB.startup).forEach(key => {
+                        const item = partB.startup[key];
+                        const fieldName = `startup_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map awards
+                if (partB.awards) {
+                    Object.keys(partB.awards).forEach(key => {
+                        const item = partB.awards[key];
+                        const fieldName = `awards_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map industryInteraction
+                if (partB.industryInteraction) {
+                    Object.keys(partB.industryInteraction).forEach(key => {
+                        const item = partB.industryInteraction[key];
+                        const fieldName = `industryInteraction_${key}`;
+                        const weight = WEIGHTS[fieldName] || 0;
+                        const calculatedClaimed = (item?.count || 0) * weight;
+                        const marks = (item?.verified !== undefined && item.verified !== 0) 
+                            ? item.verified 
+                            : calculatedClaimed;
+                        existing[fieldName] = { marks };
+                    });
+                }
+                // Map placement (single field)
+                if (partB.placement) {
+                    const fieldName = 'placement';
+                    const weight = WEIGHTS[fieldName] || 0;
+                    const calculatedClaimed = (partB.placement.count || 0) * weight;
+                    const marks = (partB.placement.verified !== undefined && partB.placement.verified !== 0) 
+                        ? partB.placement.verified 
+                        : calculatedClaimed;
+                    existing[fieldName] = { marks };
+                }
+            }
+            setVerifiedScores(existing);
         } catch (err: any) {
-            setError("Failed to load data for verification");
+            console.error("Error fetching verification data:", err);
+            setError(err.response?.data?.message || "Failed to load data for verification");
         } finally {
             setLoading(false);
         }
-    }, [facultyId]);
+    }, [facultyId, token]);
 
     useEffect(() => {
         fetchData();
@@ -125,44 +379,135 @@ export default function VerificationForm() {
             id: "journal",
             title: "1. Journal Publications",
             metrics: [
-                { label: mProps("sci", "SCI Journal Papers"), name: "sci", weight: 100, original: originalData?.journal?.sci },
-                { label: mProps("esci", "ESCI Journal Papers"), name: "esci", weight: 50, original: originalData?.journal?.esci },
-                { label: mProps("scopus", "Scopus Journal Papers"), name: mProps("scopus", "scopus"), weight: 50, original: originalData?.journal?.scopus },
-                { label: mProps("ugc", "UGC CARE Journal Papers"), name: "ugc", weight: 10, original: originalData?.journal?.ugc },
-                { label: mProps("other", "Other Journal Papers"), name: "other", weight: 5, original: originalData?.journal?.other },
+                { label: "SCI Journal Papers", name: "papers_sci", weight: 100, original: originalData?.papers?.sci },
+                { label: "ESCI Journal Papers", name: "papers_esci", weight: 50, original: originalData?.papers?.esci },
+                { label: "Scopus Journal Papers", name: "papers_scopus", weight: 50, original: originalData?.papers?.scopus },
+                { label: "UGC CARE Journal Papers", name: "papers_ugc", weight: 10, original: originalData?.papers?.ugc },
+                { label: "Other Journal Papers", name: "papers_other", weight: 5, original: originalData?.papers?.other },
             ]
         },
         {
             id: "conference",
             title: "2. Conference Publications",
             metrics: [
-                { label: "Scopus/WoS Conference", name: "confScopus", weight: 20, original: originalData?.conference?.scopus },
-                { label: "Other Conference", name: mProps("confOther", "confOther"), weight: 10, original: originalData?.conference?.other },
+                { label: "Scopus/WoS Conference", name: "conferences_scopus", weight: 20, original: originalData?.conferences?.scopus },
+                { label: "Other Conference", name: "conferences_other", weight: 10, original: originalData?.conferences?.other },
             ]
         },
         {
             id: "bookChapters",
             title: "3. Book Chapters",
             metrics: [
-                { label: "Scopus/WoS Book Chapter", name: "bcScopus", weight: 20, original: originalData?.bookChapter?.scopus },
-                { label: "Other Book Chapter", name: "bcOther", weight: 10, original: originalData?.bookChapter?.other },
+                { label: "Scopus/WoS Book Chapter", name: "bookChapters_scopus", weight: 20, original: originalData?.bookChapters?.scopus },
+                { label: "Other Book Chapter", name: "bookChapters_other", weight: 10, original: originalData?.bookChapters?.other },
             ],
             limit: SECTION_LIMITS.bookChapters
         },
         {
-            id: "patent",
-            title: "4. Patents (Individual)",
+            id: "books",
+            title: "4. Books",
             metrics: [
-                { label: "Patent Registered", name: "patReg", weight: 10, original: originalData?.patentIndiv?.registered },
-                { label: "Patent Published", name: "patPub", weight: 20, original: originalData?.patentIndiv?.published },
-                { label: "Patent Granted", name: "patGrant", weight: 50, original: originalData?.patentIndiv?.granted },
+                { label: "International Indexed Book", name: "books_intlIndexed", weight: 50, original: originalData?.books?.intlIndexed },
+                { label: "International/National Book", name: "books_intlNational", weight: 30, original: originalData?.books?.intlNational },
+                { label: "Local Book", name: "books_local", weight: 10, original: originalData?.books?.local },
+            ],
+            limit: SECTION_LIMITS.books
+        },
+        {
+            id: "citations",
+            title: "5. Citations",
+            metrics: [
+                { label: "Web of Science Citations", name: "citations_wos", weight: 1, original: originalData?.citations?.wos },
+                { label: "Scopus Citations", name: "citations_scopus", weight: 1, original: originalData?.citations?.scopus },
+                { label: "Google Scholar Citations", name: "citations_googleScholar", weight: 0.5, original: originalData?.citations?.googleScholar },
+            ],
+            limit: SECTION_LIMITS.citations
+        },
+        {
+            id: "copyrights",
+            title: "6. Copyrights",
+            metrics: [
+                { label: "Individual Copyright Registered", name: "copyrights_individualRegistered", weight: 10, original: originalData?.copyrights?.individualRegistered },
+                { label: "Individual Copyright Granted", name: "copyrights_individualGranted", weight: 20, original: originalData?.copyrights?.individualGranted },
+                { label: "Institute Copyright Registered", name: "copyrights_instituteRegistered", weight: 5, original: originalData?.copyrights?.instituteRegistered },
+                { label: "Institute Copyright Granted", name: "copyrights_instituteGranted", weight: 10, original: originalData?.copyrights?.instituteGranted },
+            ],
+            limit: SECTION_LIMITS.copyrightIndividual
+        },
+        {
+            id: "patents",
+            title: "7. Patents",
+            metrics: [
+                { label: "Individual Patent Registered", name: "patents_individualRegistered", weight: 10, original: originalData?.patents?.individualRegistered },
+                { label: "Individual Patent Published", name: "patents_individualPublished", weight: 20, original: originalData?.patents?.individualPublished },
+                { label: "Individual Patent Granted", name: "patents_individualGranted", weight: 50, original: originalData?.patents?.individualGranted },
+                { label: "Individual Patent Commercialized", name: "patents_individualCommercialized", weight: 100, original: originalData?.patents?.individualCommercialized },
+                { label: "Institute Patent Registered", name: "patents_instituteRegistered", weight: 5, original: originalData?.patents?.instituteRegistered },
+                { label: "Institute Patent Published", name: "patents_institutePublished", weight: 10, original: originalData?.patents?.institutePublished },
+                { label: "Institute Patent Granted", name: "patents_instituteGranted", weight: 30, original: originalData?.patents?.instituteGranted },
+                { label: "Institute Patent Commercialized", name: "patents_instituteCommercialized", weight: 50, original: originalData?.patents?.instituteCommercialized },
             ],
             limit: SECTION_LIMITS.patentIndividual
+        },
+        {
+            id: "grants",
+            title: "8. Research & Training Grants",
+            metrics: [
+                { label: "Research Grants", name: "grants_research", weight: 50, original: originalData?.grants?.research },
+                { label: "Non-Research Grants", name: "grants_nonResearch", weight: 20, original: originalData?.grants?.nonResearch },
+                { label: "Training Programs (Revenue)", name: "revenueTraining", weight: 10, original: originalData?.revenueTraining },
+            ],
+            limit: SECTION_LIMITS.nonResearchGrants
+        },
+        {
+            id: "products",
+            title: "9. Product Development",
+            metrics: [
+                { label: "Commercialized Product", name: "products_commercialized", weight: 100, original: originalData?.products?.commercialized },
+                { label: "Developed Product", name: "products_developed", weight: 50, original: originalData?.products?.developed },
+                { label: "Product PoC", name: "products_poc", weight: 30, original: originalData?.products?.poc },
+            ],
+            limit: SECTION_LIMITS.productDevelopment
+        },
+        {
+            id: "startup",
+            title: "10. Startup & Entrepreneurship",
+            metrics: [
+                { label: "Startup Revenue", name: "startup_revenue", weight: 100, original: originalData?.startup?.revenue },
+                { label: "Startup Funding", name: "startup_funding", weight: 80, original: originalData?.startup?.funding },
+                { label: "Startup Product", name: "startup_product", weight: 60, original: originalData?.startup?.product },
+                { label: "Startup PoC", name: "startup_poc", weight: 40, original: originalData?.startup?.poc },
+                { label: "Startup Registered", name: "startup_registered", weight: 20, original: originalData?.startup?.registered },
+            ]
+        },
+        {
+            id: "awards",
+            title: "11. Awards & Fellowships",
+            metrics: [
+                { label: "International Award", name: "awards_international", weight: 50, original: originalData?.awards?.international },
+                { label: "Government Award", name: "awards_government", weight: 40, original: originalData?.awards?.government },
+                { label: "National Award", name: "awards_national", weight: 30, original: originalData?.awards?.national },
+                { label: "International Fellowship", name: "awards_intlFellowship", weight: 40, original: originalData?.awards?.intlFellowship },
+                { label: "National Fellowship", name: "awards_nationalFellowship", weight: 30, original: originalData?.awards?.nationalFellowship },
+            ],
+            limit: SECTION_LIMITS.awardsAndFellowships
+        },
+        {
+            id: "industryInteraction",
+            title: "12. Industry Interaction",
+            metrics: [
+                { label: "Active MoU", name: "industryInteraction_activeMou", weight: 20, original: originalData?.industryInteraction?.activeMou },
+                { label: "Industry Collaboration", name: "industryInteraction_collaboration", weight: 30, original: originalData?.industryInteraction?.collaboration },
+            ]
+        },
+        {
+            id: "placement",
+            title: "13. Placement Activities",
+            metrics: [
+                { label: "Placement Support", name: "placement", weight: 10, original: originalData?.placement },
+            ]
         }
     ], [originalData, verifiedScores]);
-
-    // Simple helper to avoid TS errors on dynamic keys
-    function mProps(k: string, d: string) { return d; }
 
     // Calculation logic
     const results = useMemo(() => {
@@ -179,24 +524,44 @@ export default function VerificationForm() {
         });
 
         const limit = (faculty?.role && (CADRE_LIMITS as any)[faculty.role]) || CADRE_LIMITS.default;
-        const finalTotal = Math.min(limit, totalUnfiltered);
+        const calculatedFinalTotal = Math.min(limit, totalUnfiltered);
+        const finalTotal = manualFinalTotal !== null ? manualFinalTotal : calculatedFinalTotal;
 
-        return { sectionScores, totalUnfiltered, finalTotal, limit };
-    }, [verifiedScores, faculty?.role, sections]);
+        return { sectionScores, totalUnfiltered, calculatedFinalTotal, finalTotal, limit };
+    }, [verifiedScores, faculty?.role, sections, manualFinalTotal]);
 
-    const handleSave = async (isFinal = false) => {
+    const handleSave = async () => {
+        if (!token) {
+            alert("Authentication required");
+            return;
+        }
+
         setSaving(true);
         try {
             const payload = {
                 verifiedScores,
-                verificationRemarks: remarks,
-                totalVerified: results.finalTotal,
-                isApproved: isFinal
+                finalTotal: results.finalTotal
             };
-            await axios.put(`${BACKEND}/appraisal/${facultyId}/verify/part-b`, payload, { withCredentials: true });
-            router.push("/verification-team/dashboard");
-        } catch (err) {
-            alert("Failed to save verification");
+            
+            const response = await axios.post(
+                `${BACKEND}/verification/finalize/${facultyId}`, 
+                payload,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (response.data.success) {
+                alert("Verification finalized successfully! Status updated to Portfolio Marks Pending.");
+                router.push("/verification-team/dashboard");
+            } else {
+                alert(response.data.message || "Failed to finalize verification");
+            }
+        } catch (err: any) {
+            console.error("Error finalizing verification:", err);
+            alert(err.response?.data?.message || "Failed to finalize verification");
         } finally {
             setSaving(false);
         }
@@ -242,20 +607,23 @@ export default function VerificationForm() {
                 {sections.map(sec => (
                     <SectionCard key={sec.id} title={sec.title}>
                         <div className="divide-y divide-slate-100">
-                            {sec.metrics.map(m => (
-                                <MetricField
-                                    key={m.name}
-                                    label={m.label}
-                                    name={m.name}
-                                    value={m.original?.value || 0}
-                                    onChange={(e) => handleScoreChange(m.name, Number(e.target.value))}
-                                    proofValue={m.original?.proof || ""}
-                                    onProofChange={() => { }}
-                                    verifiedScore={verifiedScores[m.name]?.marks}
-                                    isVerificationMode={true}
-                                    hint={`Weight: ${m.weight} per unit | Claimed: ${m.original?.value || 0}`}
-                                />
-                            ))}
+                            {sec.metrics.map(m => {
+                                const calculatedClaimed = (m.original?.count || 0) * m.weight;
+                                return (
+                                    <MetricField
+                                        key={m.name}
+                                        label={m.label}
+                                        name={m.name}
+                                        value={m.original?.count || 0}
+                                        onChange={(e) => handleScoreChange(m.name, Number(e.target.value))}
+                                        proofValue={m.original?.proof || ""}
+                                        onProofChange={() => { }}
+                                        verifiedScore={verifiedScores[m.name]?.marks}
+                                        isVerificationMode={true}
+                                        hint={`Weight: ${m.weight} per unit | Claimed: ${calculatedClaimed} marks`}
+                                    />
+                                );
+                            })}
                         </div>
                         {sec.limit && (
                             <div className="mt-6 p-5 bg-indigo-50/50 rounded-2xl flex items-center justify-between border-2 border-indigo-100/50 group hover:border-indigo-200 transition-colors duration-300">
@@ -273,47 +641,56 @@ export default function VerificationForm() {
                     </SectionCard>
                 ))}
 
-                {/* Final Remarks & Action Bar */}
-                <div className="bg-slate-900 rounded-3xl p-8 shadow-2xl space-y-6 border-4 border-slate-800">
-                    <div>
-                        <div className="flex items-center gap-2 mb-4">
-                            <MessageSquare className="text-indigo-400" size={20} />
-                            <h2 className="text-xl font-black text-white uppercase tracking-tight">Verifier Remarks</h2>
-                        </div>
-                        <Textarea
-                            placeholder="Provide feedback or justification for mark adjustments..."
-                            value={remarks}
-                            onChange={(e) => setRemarks(e.target.value)}
-                            className="bg-slate-800 border-slate-700 text-white font-medium text-lg min-h-[120px] focus:ring-indigo-500 rounded-2xl p-6"
-                        />
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-4 pt-8 border-t border-slate-800">
-                        <div className="flex-1 flex flex-col justify-center">
+                {/* Final Action Bar */}
+                <div className="bg-slate-900 rounded-3xl p-8 shadow-2xl border-4 border-slate-800 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="flex flex-col justify-center">
                             <p className="text-indigo-400 text-[10px] font-black uppercase tracking-widest mb-1">Calculated Total</p>
                             <p className="text-2xl font-black text-white leading-none">
                                 {results.totalUnfiltered} <span className="text-slate-500 text-sm font-bold">(Unfiltered)</span>
                             </p>
+                            <p className="text-emerald-400 text-xs font-bold mt-2">
+                                Auto Final: {results.calculatedFinalTotal} / {results.limit}
+                            </p>
                         </div>
 
-                        <div className="flex gap-3">
-                            <Button
-                                onClick={() => handleSave(false)}
-                                disabled={saving}
-                                variant="outline"
-                                className="bg-transparent border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white font-bold uppercase tracking-wider h-14 px-8 rounded-2xl border-2"
-                            >
-                                Save Draft
-                            </Button>
-                            <Button
-                                onClick={() => handleSave(true)}
-                                disabled={saving}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider h-14 px-10 rounded-2xl shadow-xl shadow-indigo-600/20 gap-2"
-                            >
-                                <CheckSquare size={20} />
-                                Finalize Verification
-                            </Button>
+                        <div className="flex flex-col justify-center">
+                            <label className="text-amber-400 text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+                                <CheckSquare size={12} />
+                                Override Final Total
+                            </label>
+                            <input
+                                type="number"
+                                min={0}
+                                max={results.limit}
+                                value={manualFinalTotal !== null ? manualFinalTotal : ''}
+                                onChange={(e) => setManualFinalTotal(e.target.value ? Number(e.target.value) : null)}
+                                placeholder={`Auto: ${results.calculatedFinalTotal}`}
+                                className="w-full rounded-xl border-2 border-amber-500/50 bg-slate-800 px-4 py-3 text-2xl font-black text-amber-300 focus:outline-none focus:ring-4 focus:ring-amber-500/30 focus:border-amber-500 placeholder:text-slate-600"
+                            />
+                            <p className="text-slate-400 text-[9px] font-bold mt-1.5">Leave empty to use calculated value</p>
                         </div>
+
+                        <div className="flex flex-col justify-center">
+                            <p className="text-emerald-400 text-[10px] font-black uppercase tracking-widest mb-1">Final Verified Total</p>
+                            <p className="text-4xl font-black text-emerald-400 leading-none">
+                                {results.finalTotal}
+                            </p>
+                            <p className="text-slate-500 text-xs font-bold mt-2">
+                                Max Limit: {results.limit}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4 border-t border-slate-800">
+                        <Button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider h-14 px-10 rounded-2xl shadow-xl shadow-indigo-600/20 gap-2"
+                        >
+                            <CheckSquare size={20} />
+                            {saving ? "Finalizing..." : "Finalize Verification"}
+                        </Button>
                     </div>
                 </div>
             </div>
