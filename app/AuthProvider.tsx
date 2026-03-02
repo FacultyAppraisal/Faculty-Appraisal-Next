@@ -19,7 +19,7 @@ export interface AuthUser {
   email: string;
   name: string;
   role: User["role"];
-  department?: string;
+  department: string;
   designation?: string;
   isInVerificationPanel?: boolean;
 }
@@ -80,6 +80,8 @@ export default function AuthProvider({
           email: u.email,
           name: u.name,
           role: u.role as Role,
+          department: u.department,
+          designation: u.designation,
           isInVerificationPanel: !!u.isInVerificationPanel,
         });
       }
@@ -89,10 +91,10 @@ export default function AuthProvider({
   }, [token]);
 
   useEffect(() => {
-    if (token && !user?.isInVerificationPanel) {
+    if (token && !user) {
       syncUser();
     }
-  }, [token, syncUser]);
+  }, [token, syncUser, user]);
 
 
   const normalizeRolePath = useCallback((r?: string | null) => {
@@ -139,6 +141,8 @@ export default function AuthProvider({
           email: receivedUser.email,
           name: receivedUser.name || receivedUser.email.split("@")[0],
           role: receivedUser.role as Role,
+          department: receivedUser.department,
+          designation: receivedUser.designation,
           isInVerificationPanel: !!receivedUser.isInVerificationPanel,
         };
         //clear everything related to auth in localStorage to prevent stale data issues
