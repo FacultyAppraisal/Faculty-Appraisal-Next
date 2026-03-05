@@ -41,11 +41,13 @@ const API_BASE = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000"
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ExternalEvaluator {
-  _id: string;
+  userId: string;
   full_name: string;
   desg: string;
   organization: string;
   mail: string;
+  assignedDean?: string;
+  assignedFaculties?: string[];
 }
 
 interface InternalFaculty {
@@ -109,16 +111,39 @@ export default function AssignFacultyExternalPage() {
     if (!dept || !token) return;
     setLoading(true);
     try {
-      const [extRes, facRes, deansRes, assignRes, deanAssignRes, mappingsRes] = await Promise.all([
-        axios.get(`${API_BASE}/api/hod/${dept}/get-externals`, authHeader),
-        axios.get(`${API_BASE}/api/users`, authHeader),
-        axios.get(`${API_BASE}/api/hod/${dept}/interaction-deans`, authHeader),
-        axios.get(`${API_BASE}/api/hod/${dept}/external-assignments`, authHeader),
-        axios.get(`${API_BASE}/api/hod/${dept}/external-dean-assignments`, authHeader),
-        axios.get(`${API_BASE}/api/hod/${dept}/dean-external-mappings`, authHeader).catch(() => ({ data: { success: false } }))
+      const [extRes, facRes, deansRes] = await Promise.all([
+        axios.get(`${API_BASE}/interaction/${dept}/get-externals`, { withCredentials: true }),
+        axios.get(`${API_BASE}/users`, authHeader),
+        axios.get(`${API_BASE}/interaction/${dept}/interaction-deans`, { withCredentials: true })
       ]);
 
-      if (extRes.data.success) setExternals(extRes.data.data || []);
+      if (extRes.data.success) {
+        const externalsData = extRes.data.data || [];
+        setExternals(externalsData);
+        
+        // Build assignments from the assignedFaculties field
+        const assignmentsMap: Record<string, any> = {};
+        const deanAssignmentsMap: Record<string, any> = {};
+        
+        externalsData.forEach((ext: any) => {
+          if (ext.assignedFaculties && ext.assignedFaculties.length > 0) {
+            assignmentsMap[ext.userId] = {
+              assigned_faculty: ext.assignedFaculties.map((facId: string) => ({
+                _id: facId,
+                name: facId, // Will be populated from faculty list
+                desg: ''
+              }))
+            };
+          }
+          
+          if (ext.assignedDean) {
+            deanAssignmentsMap[ext.userId] = { dean_id: ext.assignedDean };
+          }
+        });
+        
+        setAssignments(assignmentsMap);
+        setDeanAssignments(deanAssignmentsMap);
+      }
 
       // Filter internal faculty by dept and allowed roles (Prof, Assoc, Asst)
       const allowedRoles = ["Professor", "Associate Professor", "Assistant Professor"];
@@ -137,28 +162,24 @@ export default function AssignFacultyExternalPage() {
       setInternalFaculty(filteredFac);
 
       if (deansRes.data.success) {
-        setDeans((deansRes.data.deans || []).map((d: any) => ({
-          id: d._id,
+        setDeans((deansRes.data.data || []).map((d: any) => ({
+          id: d.userId,
           name: d.name,
-          designation: d.desg || "Dean",
-          role: d.role,
+          designation: d.designation || "Dean",
+          role: "dean",
           dept: d.department || dept,
-          mail: d.mail
+          mail: d.email
         })));
       }
-
-      if (assignRes.data.success) setAssignments(assignRes.data.data || {});
-      if (deanAssignRes.data.success) setDeanAssignments(deanAssignRes.data.data || {});
-      if (mappingsRes.data.success) setMappings(mappingsRes.data.data || []);
 
     } catch (error: any) {
       console.error("Error fetching assignment data, using mock data for preview:", error);
 
       // Mock Data Fallback for Preview
       setExternals([
-        { _id: "ext_001", full_name: "Prof. Amit Verma", desg: "Senior Professor", organization: "IIT Bombay", mail: "amit.verma@iitb.ac.in" },
-        { _id: "ext_002", full_name: "Dr. Sumita Rao", desg: "Dean Academic", organization: "NIT Warangal", mail: "sumita.rao@nitw.ac.in" },
-        { _id: "ext_003", full_name: "Dr. Kevin Peter", desg: "Associate Prof", organization: "MIT", mail: "kevin.p@mit.edu" }
+        { userId: "ext_001", full_name: "Prof. Amit Verma", desg: "Senior Professor", organization: "IIT Bombay", mail: "amit.verma@iitb.ac.in" },
+        { userId: "ext_002", full_name: "Dr. Sumita Rao", desg: "Dean Academic", organization: "NIT Warangal", mail: "sumita.rao@nitw.ac.in" },
+        { userId: "ext_003", full_name: "Dr. Kevin Peter", desg: "Associate Prof", organization: "MIT", mail: "kevin.p@mit.edu" }
       ]);
 
       const mockFaculty = [
@@ -207,7 +228,7 @@ export default function AssignFacultyExternalPage() {
   const openFacultyModal = (ext: ExternalEvaluator) => {
     setActiveExternal(ext);
     // Initialize staged with current assignments for this external
-    const currentFacIds = (assignments[ext._id]?.assigned_faculty || []).map((f: any) => f._id);
+    const currentFacIds = (assignments[ext.userId]?.assigned_faculty || []).map((f: any) => f._id);
     setStaged(new Set(currentFacIds));
     setModalSearch("");
     setDialogOpen(true);
@@ -253,12 +274,11 @@ export default function AssignFacultyExternalPage() {
     if (!activeExternal || !dept) return;
     setSaving(true);
     try {
-      const payload = {
-        external_assignments: {
-          [activeExternal._id]: Array.from(staged)
-        }
-      };
-      const response = await axios.post(`${API_BASE}/api/hod/${dept}/assign-externals`, payload, authHeader);
+      const response = await axios.put(
+        `${API_BASE}/interaction/${dept}/external/${activeExternal.userId}/assign-faculties`,
+        { facultyUserIds: Array.from(staged) },
+        { withCredentials: true }
+      );
       if (response.data.success) {
         toast({ title: "Success", description: `Faculty assignments updated for ${activeExternal.full_name}.` });
         fetchData();
@@ -271,16 +291,19 @@ export default function AssignFacultyExternalPage() {
     }
   };
 
-  const handleRemoveFaculty = async (extId: string, facId: string) => {
+  const handleRemoveFaculty = async (extUserId: string, facId: string) => {
     if (!dept) return;
 
     // Optimistic UI or just standard confirm
-    const currentIds = (assignments[extId]?.assigned_faculty || []).map((f: any) => f._id);
+    const currentIds = (assignments[extUserId]?.assigned_faculty || []).map((f: any) => f._id);
     const updatedIds = currentIds.filter((id: string) => id !== facId);
 
     try {
-      const payload = { external_assignments: { [extId]: updatedIds } };
-      const response = await axios.post(`${API_BASE}/api/hod/${dept}/assign-externals`, payload, authHeader);
+      const response = await axios.put(
+        `${API_BASE}/api/interaction/${dept}/external/${extUserId}/assign-faculties`,
+        { facultyUserIds: updatedIds },
+        { withCredentials: true }
+      );
       if (response.data.success) {
         toast({ title: "Removed", description: "Faculty unassigned successfully." });
         fetchData();
@@ -290,30 +313,42 @@ export default function AssignFacultyExternalPage() {
     }
   };
 
-  const handleAssignDean = async (deanId: string) => {
+  const handleAssignDean = async (deanUserId: string) => {
     if (!activeExternal || !dept) return;
     setSaving(true);
     try {
-      const response = await axios.post(`${API_BASE}/api/hod/${dept}/dean-external-assignment/${activeExternal._id}/${deanId}`, {}, authHeader);
+      const response = await axios.put(
+        `${API_BASE}/interaction/${dept}/external/${activeExternal.userId}/assign-dean`,
+        { deanUserId },
+        { withCredentials: true }
+      );
       if (response.data.success) {
         toast({ title: "Dean Assigned", description: `${activeExternal.full_name} is now linked to the selected Dean.` });
         fetchData();
         setDeanDialogOpen(false);
       }
-    } catch {
-      toast({ title: "Error", description: "Failed to assign dean.", variant: "destructive" });
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: error.response?.data?.message || "Failed to assign dean.", 
+        variant: "destructive" 
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleRemoveDean = async (extId: string) => {
+  const handleRemoveDean = async (extUserId: string) => {
     if (!dept) return;
     try {
-      // Assuming endpoint exists or using the assign with null logic if supported
-      const response = await axios.post(`${API_BASE}/api/hod/${dept}/remove-dean-from-external`, { external_id: extId }, authHeader);
+      // Assign empty dean to remove
+      const response = await axios.put(
+        `${API_BASE}/interaction/${dept}/external/${extUserId}/assign-dean`,
+        { deanUserId: "" },
+        { withCredentials: true }
+      );
       if (response.data.success) {
-        toast({ title: "Dean Removed", description: "Relationship dissolved." });
+        toast({ title: "Dean Removed", description: "Dean assignment removed." });
         fetchData();
       }
     } catch {
@@ -321,8 +356,8 @@ export default function AssignFacultyExternalPage() {
     }
   };
 
-  const handleSelectAll = (extId: string) => {
-    const available = filteredFacultyRows.filter(f => !isAssignedToAnyOther(f.id, extId));
+  const handleSelectAll = (extUserId: string) => {
+    const available = filteredFacultyRows.filter(f => !isAssignedToAnyOther(f.id, extUserId));
     const allSelected = available.every(f => staged.has(f.id));
 
     setStaged(prev => {
@@ -403,13 +438,13 @@ export default function AssignFacultyExternalPage() {
                 variants={containerVariants}
               >
                 {externals.map((ext) => {
-                  const assignmentData = assignments[ext._id] || {};
+                  const assignmentData = assignments[ext.userId] || {};
                   const assignedFaculty = assignmentData.assigned_faculty || [];
-                  const assignedDeanId = deanAssignments[ext._id]?.dean_id;
+                  const assignedDeanId = deanAssignments[ext.userId]?.dean_id;
                   const assignedDean = deans.find(d => d.id === assignedDeanId);
 
                   return (
-                    <motion.div key={ext._id} variants={itemVariants}>
+                    <motion.div key={ext.userId} variants={itemVariants}>
                       <Card className="border shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 h-full flex flex-col group overflow-hidden">
                         <CardHeader className="pb-4 border-b border-border/50 bg-muted/30">
                           <div className="flex items-start justify-between">
@@ -444,7 +479,7 @@ export default function AssignFacultyExternalPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7 text-amber-400 hover:text-red-500 hover:bg-red-50"
-                                  onClick={() => handleRemoveDean(ext._id)}
+                                  onClick={() => handleRemoveDean(ext.userId)}
                                 >
                                   <Trash2 size={12} />
                                 </Button>
@@ -500,7 +535,7 @@ export default function AssignFacultyExternalPage() {
                                           variant="ghost"
                                           size="icon"
                                           className="h-6 w-6 text-muted-foreground hover:text-red-500 hover:bg-red-50"
-                                          onClick={() => handleRemoveFaculty(ext._id, f._id)}
+                                          onClick={() => handleRemoveFaculty(ext.userId, f._id)}
                                         >
                                           <X size={12} />
                                         </Button>
@@ -632,7 +667,7 @@ export default function AssignFacultyExternalPage() {
                 variant="outline"
                 size="sm"
                 className="h-11 px-4 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                onClick={() => handleSelectAll(activeExternal?._id || "")}
+                onClick={() => handleSelectAll(activeExternal?.userId || "")}
               >
                 {filteredFacultyRows.every(f => staged.has(f.id)) ? "Deselect All" : "Select All Visible"}
               </Button>
@@ -686,8 +721,8 @@ export default function AssignFacultyExternalPage() {
                   ) : (
                     filteredFacultyRows.map((f) => {
                       const isStaged = staged.has(f.id);
-                      const isOther = isAssignedToAnyOther(f.id, activeExternal?._id || "");
-                      const isAlreadyThis = assignments[activeExternal?._id || ""]?.assigned_faculty?.some((af: any) => af._id === f.id);
+                      const isOther = isAssignedToAnyOther(f.id, activeExternal?.userId || "");
+                      const isAlreadyThis = assignments[activeExternal?.userId || ""]?.assigned_faculty?.some((af: any) => af._id === f.id);
 
                       return (
                         <TableRow
@@ -775,7 +810,7 @@ export default function AssignFacultyExternalPage() {
                 </div>
               ) : (
                 filteredDeanRows.map((d) => {
-                  const isCurrent = deanAssignments[activeExternal?._id || ""]?.dean_id === d.id;
+                  const isCurrent = deanAssignments[activeExternal?.userId || ""]?.dean_id === d.id;
                   return (
                     <button
                       key={d.id}
