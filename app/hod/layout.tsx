@@ -25,8 +25,6 @@ export default function HodLayout({ children }: { children: ReactNode }) {
         return { title: "Add External Faculty", description: "Register external evaluators for your department" };
       case "/hod/assign-faculty-external":
         return { title: "Assign External Faculty", description: "Assign department faculty members to external evaluators" };
-      case "/hod/final-review":
-        return { title: "Final Review", description: "Review overall appraisal status and certify before forwarding to Director" };
       default:
         // Handle portfolio marking dynamic routes
         if (pathname.startsWith("/hod/portfolio-marking/")) {
