@@ -206,23 +206,20 @@ export default function HodInteractionEvaluationPage() {
                     const assignedFaculty: any[] = assignmentInfo?.assigned_faculty || [];
                     const isAssigned = assignedFaculty.some((f: any) => f._id === facultyId || f.id === facultyId);
                     if (isAssigned) {
-                        try {
-                            const extRes = await axios.get(`${API_BASE}/api/hod/${dept}/get-externals`, {
-                                headers: { Authorization: `Bearer ${token}` },
-                            });
-                            if (extRes.data.success) {
-                                const ext = extRes.data.data.find((e: any) => e._id === externalId);
-                                if (ext) {
-                                    setExternalReviewer({
-                                        id: ext._id,
-                                        name: ext.full_name,
-                                        organization: ext.organization,
-                                        designation: ext.desg,
-                                        email: ext.mail,
-                                    });
-                                }
+                        const extRes = await axios.get(`${API_BASE}/api/hod/${dept}/get-externals`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (extRes.data.success) {
+                            const ext = extRes.data.data.find((e: any) => e._id === externalId);
+                            if (ext) {
+                                setExternalReviewer({
+                                    id: ext._id,
+                                    name: ext.full_name,
+                                    organization: ext.organization,
+                                    designation: ext.desg,
+                                    email: ext.mail,
+                                });
                             }
-                        } catch {
                         }
                         break;
                     }

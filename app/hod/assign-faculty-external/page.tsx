@@ -152,48 +152,11 @@ export default function AssignFacultyExternalPage() {
       if (mappingsRes.data.success) setMappings(mappingsRes.data.data || []);
 
     } catch (error: any) {
-      console.error("Error fetching assignment data, using mock data for preview:", error);
-
-      // Mock Data Fallback for Preview
-      setExternals([
-        { _id: "ext_001", full_name: "Prof. Amit Verma", desg: "Senior Professor", organization: "IIT Bombay", mail: "amit.verma@iitb.ac.in" },
-        { _id: "ext_002", full_name: "Dr. Sumita Rao", desg: "Dean Academic", organization: "NIT Warangal", mail: "sumita.rao@nitw.ac.in" },
-        { _id: "ext_003", full_name: "Dr. Kevin Peter", desg: "Associate Prof", organization: "MIT", mail: "kevin.p@mit.edu" }
-      ]);
-
-      const mockFaculty = [
-        { id: "fac_001", name: "Dr. Rajesh Sharma", designation: "Associate Professor", role: "Professor", dept: dept || "CSE", mail: "rajesh@mail.com" },
-        { id: "fac_002", name: "Mrs. Sneha Patil", designation: "Assistant Professor", role: "Assistant Professor", dept: dept || "CSE", mail: "sneha@mail.com" },
-        { id: "fac_003", name: "Mr. Arjun V", designation: "Assistant Professor", role: "Assistant Professor", dept: dept || "CSE", mail: "arjun@mail.com" },
-        { id: "fac_004", name: "Dr. Meera K", designation: "Professor", role: "Professor", dept: dept || "CSE", mail: "meera@mail.com" }
-      ];
-      setInternalFaculty(mockFaculty);
-
-      setDeans([
-        { id: "dean_001", name: "Dr. Vinay Kumar", designation: "Dean R&D", role: "Dean", dept: dept || "CSE" },
-        { id: "dean_002", name: "Dr. S. K. Singh", designation: "Dean Student Affairs", role: "Dean", dept: dept || "CSE" }
-      ]);
-
-      setAssignments({
-        "ext_001": { assigned_faculty: [{ _id: "fac_001", name: "Dr. Rajesh Sharma", desg: "Associate Professor" }] },
-        "ext_002": { assigned_faculty: [{ _id: "fac_002", name: "Mrs. Sneha Patil", desg: "Assistant Professor" }] }
-      });
-
-      setDeanAssignments({
-        "ext_001": { dean_id: "dean_001" }
-      });
-
-      setMappings([
-        {
-          dean: { id: "dean_001", name: "Dr. Vinay Kumar", mail: "vinay@univ.edu", department: dept || "CSE" },
-          external: { id: "ext_001", name: "Prof. Amit Verma", mail: "amit@iitb.ac.in", organization: "IIT Bombay" }
-        }
-      ]);
-
+      console.error("Error fetching assignment data:", error);
       toast({
-        title: "UI Preview Mode",
-        description: "Showing mock data for dashboard preview.",
-        variant: "default"
+        title: "Error",
+        description: error.response?.status === 401 ? "Unauthorized. Please log in again." : "Failed to load assignment data.",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
