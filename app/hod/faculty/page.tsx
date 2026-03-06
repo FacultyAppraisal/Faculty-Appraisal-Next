@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Search, ChevronUp, ChevronDown, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { containerVariants, itemVariants } from "@/lib/animations";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,7 @@ type SortDir = "asc" | "desc";
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HodFacultyPage() {
+  const router = useRouter();
   const { user, token } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -339,12 +341,21 @@ export default function HodFacultyPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     {f.status === "portfolio_mark_pending" && (
-                      <Button size="sm" variant="default" className="gap-1.5">
+                      <Button 
+                        size="sm" 
+                        variant="default" 
+                        className="gap-1.5"
+                        onClick={() => router.push(`/hod/portfolio-marking/${f.id}`)}
+                      >
                         Mark Portfolio
                       </Button>
                     )}
                     {f.status === "marks_verification_pending" && (
-                      <Button size="sm" className="gap-1.5 bg-green-600 hover:bg-green-700 text-white">
+                      <Button 
+                        size="sm" 
+                        className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => router.push(`/hod/verify-marks/${f.id}`)}
+                      >
                         Verify Marks
                       </Button>
                     )}

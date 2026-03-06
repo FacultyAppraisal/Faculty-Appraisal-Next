@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, ChevronUp, ChevronDown, Send } from "lucide-react";
+import { Search, ChevronUp, ChevronDown, CheckCircle, Filter, AlertCircle, Send } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { containerVariants, itemVariants } from "@/lib/animations";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -17,8 +18,32 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/app/AuthProvider";
+import Loader from "@/components/loader";
+import axios from "axios";
+
+const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface FacultyData {
+  userId: string;
+  role: string;
+  designation: string;
+  department: string;
+  status: string;
+  summary: {
+    grandTotalClaimed: number;
+    grandTotalVerified: number;
+  };
+  partD: {
+    selfAwardedMarks: number;
+    hodMarks: number;
+    deanMarks: number;
+    totalClaimed: number;
+    totalVerified: number;
+  };
+}
 
 interface FacultyMarks {
   id: string;
@@ -26,28 +51,89 @@ interface FacultyMarks {
   designation: string;
   status: string;
   verified_marks: number;
-  scaled_verified_marks: number;
-  interaction_average: number;
+  portfolio_marks: number;
   total_marks: number;
 }
 
-type SortKey = keyof Pick<FacultyMarks, "name" | "verified_marks" | "interaction_average" | "total_marks">;
+type SortKey = keyof Pick<FacultyMarks, "name" | "verified_marks" | "portfolio_marks" | "total_marks">;
 type SortDir = "asc" | "desc";
-
-const MOCK_DATA: FacultyMarks[] = [];   // replaced by API
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FinalMarksPage() {
   const { toast } = useToast();
-  const [data] = useState<FacultyMarks[]>(MOCK_DATA);
+  const router = useRouter();
+  const { user, token } = useAuth();
+  const [data, setData] = useState<FacultyMarks[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; dir: SortDir }>({
     key: "name",
     dir: "asc",
   });
-  const [sending, setSending] = useState(false);
+  const [minMarks, setMinMarks] = useState("");
+  const [maxMarks, setMaxMarks] = useState("");
+  const [sending, setSending] = useState<string | null>(null);
+
+  // Fetch faculty marks data
+  useEffect(() => {
+    const fetchFacultyMarks = async () => {
+      if (!user?.department || !token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await axios.get(
+          `${BACKEND}/appraisal/department/${encodeURIComponent(user.department)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (response.data.success) {
+          const appraisals = response.data.data || [];
+          
+          // Filter and transform to show only faculty with "Completed" status
+          const facultyMarks: FacultyMarks[] = appraisals
+            .filter((appraisal: FacultyData) => 
+              appraisal.status?.toLowerCase().replace(/\s+/g, "_") === "completed"
+            )
+            .map((appraisal: FacultyData) => {
+              const verifiedMarks = appraisal.summary?.grandTotalVerified || 0;
+              const portfolioMarks = appraisal.partD?.hodMarks || appraisal.partD?.deanMarks || 0;
+              
+              return {
+                id: appraisal.userId,
+                name: appraisal.userId,
+                designation: appraisal.designation,
+                status: appraisal.status,
+                verified_marks: verifiedMarks,
+                portfolio_marks: portfolioMarks,
+                total_marks: verifiedMarks + portfolioMarks,
+              };
+            });
+
+          setData(facultyMarks);
+        } else {
+          setError(response.data.message || "Failed to fetch faculty marks");
+        }
+      } catch (err: any) {
+        console.error("Error fetching faculty marks:", err);
+        setError(err.response?.data?.message || "Failed to fetch faculty marks");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFacultyMarks();
+  }, [user?.department, token]);
 
   const toggleSort = (key: SortKey) =>
     setSortConfig((prev) =>
@@ -63,73 +149,97 @@ export default function FinalMarksPage() {
       <ChevronDown size={14} className="opacity-30" />
     );
 
-  const eligible = useMemo(
-    () => data.filter((f) => f.status?.toLowerCase() === "done"),
-    [data]
-  );
-
   const filtered = useMemo(() => {
     return data
-      .filter(
-        (f) =>
+      .filter((f) => {
+        const searchMatch =
           f.name.toLowerCase().includes(search.toLowerCase()) ||
-          f.id.toLowerCase().includes(search.toLowerCase())
-      )
+          f.id.toLowerCase().includes(search.toLowerCase());
+        
+        const marksMatch =
+          (!minMarks || f.total_marks >= Number(minMarks)) &&
+          (!maxMarks || f.total_marks <= Number(maxMarks));
+
+        return searchMatch && marksMatch;
+      })
       .sort((a, b) => {
         const dir = sortConfig.dir === "asc" ? 1 : -1;
         if (sortConfig.key === "name") return a.name.localeCompare(b.name) * dir;
         return ((a[sortConfig.key] as number) - (b[sortConfig.key] as number)) * dir;
       });
-  }, [data, search, sortConfig]);
+  }, [data, search, sortConfig, minMarks, maxMarks]);
 
-  const allEligibleSelected =
-    eligible.length > 0 && eligible.every((f) => selected.has(f.id));
-
-  const toggleAll = () => {
-    if (allEligibleSelected) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(eligible.map((f) => f.id)));
-    }
-  };
-
-  const toggleOne = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const handleSendToDirector = async () => {
-    if (selected.size === 0) {
-      toast({ title: "No faculty selected", description: "Select at least one faculty member.", variant: "destructive" });
+  const handleSendToDirector = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to send this appraisal to the Director?')) {
       return;
     }
-    setSending(true);
+
+    setSending(userId);
     try {
-      // TODO: POST /api/hod/send-to-director  { facultyIds: [...selected] }
-      await new Promise((r) => setTimeout(r, 800)); // simulate
-      toast({ title: "Sent to Director", description: `${selected.size} faculty record(s) forwarded successfully.` });
-      setSelected(new Set());
-    } catch {
-      toast({ title: "Error", description: "Failed to send to Director. Please try again.", variant: "destructive" });
+      const response = await axios.patch(
+        `${BACKEND}/appraisal/${userId}/send-to-director`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        // Remove sent faculty from the list
+        setData((prev) => prev.filter((f) => f.id !== userId));
+        
+        toast({ 
+          title: "Sent to Director", 
+          description: "Appraisal has been sent to the Director successfully." 
+        });
+      } else {
+        throw new Error(response.data.message || "Failed to send to director");
+      }
+    } catch (err: any) {
+      console.error("Error sending to director:", err);
+      toast({ 
+        title: "Error", 
+        description: err.response?.data?.message || "Failed to send to director. Please try again.", 
+        variant: "destructive" 
+      });
     } finally {
-      setSending(false);
+      setSending(null);
     }
   };
 
   const summaryCards = [
-    { label: "Total Faculty",   value: data.length },
-    { label: "Eligible (Done)", value: eligible.length },
-    { label: "Selected",        value: selected.size },
+    { label: "Ready to Send", value: data.length, icon: Send, color: "text-green-600" },
+    { label: "Avg Verified Marks", value: data.length > 0 ? (data.reduce((sum, f) => sum + f.verified_marks, 0) / data.length).toFixed(2) : "0.00", icon: Filter, color: "text-blue-600" },
+    { label: "Avg Total Marks", value: data.length > 0 ? (data.reduce((sum, f) => sum + f.total_marks, 0) / data.length).toFixed(2) : "0.00", icon: CheckCircle, color: "text-purple-600" },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <p className="text-red-600">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <>
       {/* Summary */}
       <motion.div
-        className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6"
+        className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
@@ -138,8 +248,15 @@ export default function FinalMarksPage() {
           <motion.div key={c.label} variants={itemVariants}>
             <Card className="border">
               <CardContent className="p-4">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{c.value}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      {c.label}
+                    </p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{c.value}</p>
+                  </div>
+                  <c.icon className={`h-8 w-8 ${c.color}`} />
+                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -162,14 +279,25 @@ export default function FinalMarksPage() {
             className="pl-9"
           />
         </div>
-        <Button
-          onClick={handleSendToDirector}
-          disabled={selected.size === 0 || sending}
-          className="gap-2 shrink-0"
-        >
-          <Send size={16} />
-          {sending ? "Sending…" : `Send to Director (${selected.size})`}
-        </Button>
+
+        {/* Marks filter */}
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            placeholder="Min marks"
+            value={minMarks}
+            onChange={(e) => setMinMarks(e.target.value)}
+            className="w-28"
+          />
+          <span className="text-muted-foreground text-sm">to</span>
+          <Input
+            type="number"
+            placeholder="Max marks"
+            value={maxMarks}
+            onChange={(e) => setMaxMarks(e.target.value)}
+            className="w-28"
+          />
+        </div>
       </motion.div>
 
       {/* Table */}
@@ -182,78 +310,87 @@ export default function FinalMarksPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={allEligibleSelected}
-                  onCheckedChange={toggleAll}
-                  disabled={eligible.length === 0}
-                />
-              </TableHead>
               <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("name")}>
-                <span className="inline-flex items-center gap-1">Faculty <SortIcon col="name" /></span>
+                <span className="inline-flex items-center gap-1">
+                  Faculty <SortIcon col="name" />
+                </span>
               </TableHead>
+              <TableHead>Designation</TableHead>
               <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("verified_marks")}>
-                <span className="inline-flex items-center gap-1 float-right">Verified <SortIcon col="verified_marks" /></span>
+                <span className="inline-flex items-center gap-1 float-right">
+                  Verified Marks <SortIcon col="verified_marks" />
+                </span>
               </TableHead>
-              <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("interaction_average")}>
-                <span className="inline-flex items-center gap-1 float-right">Interaction Avg <SortIcon col="interaction_average" /></span>
+              <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("portfolio_marks")}>
+                <span className="inline-flex items-center gap-1 float-right">
+                  Portfolio Marks <SortIcon col="portfolio_marks" />
+                </span>
               </TableHead>
               <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("total_marks")}>
-                <span className="inline-flex items-center gap-1 float-right">Total <SortIcon col="total_marks" /></span>
+                <span className="inline-flex items-center gap-1 float-right">
+                  Total Marks <SortIcon col="total_marks" />
+                </span>
               </TableHead>
               <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-center">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-16 text-muted-foreground">
                   {data.length === 0
-                    ? "No marks data yet. Data will appear once loaded from the server."
-                    : "No results match the search."}
+                    ? "No completed appraisals ready to send to Director."
+                    : "No results match the current filters."}
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((f) => {
-                const isDone = f.status?.toLowerCase() === "done";
-                return (
-                  <TableRow key={f.id} className="hover:bg-muted/30 transition-colors">
-                    <TableCell>
-                      <Checkbox
-                        checked={selected.has(f.id)}
-                        onCheckedChange={() => toggleOne(f.id)}
-                        disabled={!isDone}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <p className="font-medium text-foreground">{f.name}</p>
-                      <p className="text-xs text-muted-foreground">{f.id} · {f.designation}</p>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">{f.verified_marks.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{f.interaction_average.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm font-semibold">{f.total_marks.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                        isDone
-                          ? "bg-green-100 text-green-800 border-green-300"
-                          : f.status?.toLowerCase() === "senttodirector"
-                          ? "bg-indigo-100 text-indigo-800 border-indigo-300"
-                          : "border-gray-300 text-gray-600"
-                      }`}>
-                        {isDone ? "Done" : f.status?.toLowerCase() === "senttodirector" ? "Sent to Director" : f.status ?? "Pending"}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
+              filtered.map((f) => (
+                <TableRow key={f.id} className="hover:bg-muted/30 transition-colors">
+                  <TableCell>
+                    <p className="font-medium text-foreground">{f.name}</p>
+                    <p className="text-xs text-muted-foreground">{f.id}</p>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {f.designation}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    {f.verified_marks.toFixed(2)}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    {f.portfolio_marks.toFixed(2)}
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-lg text-blue-700">
+                    {f.total_marks.toFixed(2)}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+                      Completed
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Button
+                      onClick={() => handleSendToDirector(f.id)}
+                      disabled={sending === f.id}
+                      size="sm"
+                      className="gap-2 bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Send size={14} />
+                      {sending === f.id ? "Sending..." : "Send to Director"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
       </motion.div>
 
-      <p className="mt-4 text-xs text-muted-foreground">
-        Only faculty with <strong>Done</strong> status can be selected and forwarded to the Director.
-      </p>
+      {data.length > 0 && (
+        <p className="mt-4 text-xs text-muted-foreground">
+          Click <strong>Send to Director</strong> to forward completed appraisals to the Director for final review.
+        </p>
+      )}
     </>
   );
 }

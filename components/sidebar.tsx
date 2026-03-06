@@ -243,10 +243,6 @@ const ROLE_CONFIG: Record<User["role"], RoleConfig> = {
           { icon: UserCheck, label: "Assign External Faculty", href: "/hod/assign-faculty-external" },
         ],
       },
-      {
-        key: "hod-final-review",
-        items: [{ icon: CheckSquare, label: "Final Review", href: "/hod/final-review" }],
-      },
     ],
   },
   dean: {
