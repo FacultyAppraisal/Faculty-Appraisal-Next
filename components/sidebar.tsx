@@ -123,20 +123,6 @@ const ROLE_CONFIG: Record<User["role"], RoleConfig> = {
         items: [{ icon: LayoutDashboard, label: "Dashboard", href: "/director/dashboard" }],
       },
       {
-        key: "director-appraisal",
-        label: "Appraisal Form",
-        icon: FileText,
-        collapsible: true,
-        items: [
-          { icon: BookOpen, label: "Part A: Academic Involvement", href: "/director/appraisal?tab=A" },
-          { icon: FileText, label: "Part B: Research & Development", href: "/director/appraisal?tab=B" },
-          { icon: Building2, label: "Part C: Self Development", href: "/director/appraisal?tab=C" },
-          { icon: GraduationCap, label: "Part D: Portfolio", href: "/director/appraisal?tab=D" },
-          { icon: Award, label: "Part E: Extraordinary Contribution", href: "/director/appraisal?tab=E" },
-          { icon: CheckSquare, label: "Review & Submit", href: "/director/appraisal?tab=F" },
-        ],
-      },
-      {
         key: "director-privileges",
         label: "Director Privileges",
         icon: Award,
@@ -145,6 +131,7 @@ const ROLE_CONFIG: Record<User["role"], RoleConfig> = {
           { icon: Building, label: "HOD Appraisals", href: "/director/hod-forms" },
           { icon: Users, label: "Dean Appraisals", href: "/director/dean-forms" },
           { icon: FileText, label: "Faculty Appraisals", href: "/director/faculty-forms" },
+          { icon: ClipboardList, label: "Final Marks", href: "/director/final-marks" },
         ],
       },
       {

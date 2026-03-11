@@ -24,13 +24,21 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/app/AuthProvider";
+import axios from "axios";
+import Loader from "@/components/loader";
+
+const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
+
+// Director-added externals belong to "pccoe" department
+const DIRECTOR_DEPT = "pccoe";
 
 interface ExternalReviewer {
-  id: string;
+  userId: string;
   full_name: string;
   mail: string;
   mob: string;
-  designation: string;
+  desg: string;
   specialization: string;
   organization: string;
   address: string;
@@ -47,9 +55,11 @@ const DESIGNATIONS = [
 
 export default function DirectorAddExternalPage() {
   const { toast } = useToast();
+  const { token } = useAuth();
   const [externals, setExternals] = useState<ExternalReviewer[]>([]);
   const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [form, setForm] = useState({
     full_name: "",
@@ -61,26 +71,77 @@ export default function DirectorAddExternalPage() {
     address: "",
   });
 
+  // Fetch existing externals added by director (department = pccoe)
+  const fetchExternals = async () => {
+    if (!token) return;
+    try {
+      setLoading(true);
+      const response = await axios.get(
+        `${BACKEND}/interaction/${DIRECTOR_DEPT}/get-externals`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        setExternals(response.data.data || []);
+      }
+    } catch (err: any) {
+      console.error("Error fetching externals:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    // TODO: GET /api/get-externals
-  }, []);
+    fetchExternals();
+  }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.full_name || !form.mail || !form.designation) {
+    if (!form.full_name || !form.mail || !form.mob || !form.designation) {
       toast({ title: "Required fields missing", variant: "destructive" });
       return;
     }
     setSubmitting(true);
     try {
-      // TODO: POST /api/create-external  body: form
-      toast({ title: "External reviewer added successfully" });
-      setForm({ full_name: "", mail: "", mob: "", designation: "", specialization: "", organization: "", address: "" });
-      // refresh list
-    } catch {
-      toast({ title: "Failed to add external reviewer", variant: "destructive" });
+      const response = await axios.post(
+        `${BACKEND}/interaction/${DIRECTOR_DEPT}/create-external`,
+        {
+          full_name: form.full_name,
+          mail: form.mail,
+          mob: form.mob,
+          desg: form.designation,
+          specialization: form.specialization,
+          organization: form.organization,
+          address: form.address,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        toast({ title: "External reviewer added successfully" });
+        setForm({ full_name: "", mail: "", mob: "", designation: "", specialization: "", organization: "", address: "" });
+        fetchExternals();
+      } else {
+        toast({ title: response.data.message || "Failed to add", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message || "Failed to add external reviewer", variant: "destructive" });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (userId: string) => {
+    if (!confirm("Are you sure you want to delete this external reviewer?")) return;
+    try {
+      const response = await axios.delete(
+        `${BACKEND}/interaction/${DIRECTOR_DEPT}/external/${userId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        toast({ title: "External reviewer deleted successfully" });
+        fetchExternals();
+      }
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message || "Failed to delete", variant: "destructive" });
     }
   };
 
@@ -104,7 +165,7 @@ export default function DirectorAddExternalPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <UserPlus className="h-4 w-4 text-primary" />
-              Register New External Reviewer
+              Register New External Reviewer (Director)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -132,12 +193,13 @@ export default function DirectorAddExternalPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="mob">Mobile</Label>
+                  <Label htmlFor="mob">Mobile *</Label>
                   <Input
                     id="mob"
-                    placeholder="+91 98765 43210"
+                    placeholder="9876543210"
                     value={form.mob}
                     onChange={(e) => setForm({ ...form, mob: e.target.value })}
+                    required
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -209,51 +271,55 @@ export default function DirectorAddExternalPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Mobile</TableHead>
-                    <TableHead>Designation</TableHead>
-                    <TableHead>Organization</TableHead>
-                    <TableHead className="text-center">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.length === 0 ? (
+            {loading ? (
+              <div className="flex justify-center py-10">
+                <Loader />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                        No external reviewers registered
-                      </TableCell>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Mobile</TableHead>
+                      <TableHead>Designation</TableHead>
+                      <TableHead>Organization</TableHead>
+                      <TableHead className="text-center">Action</TableHead>
                     </TableRow>
-                  ) : (
-                    filtered.map((ext) => (
-                      <TableRow key={ext.id}>
-                        <TableCell className="font-medium">{ext.full_name}</TableCell>
-                        <TableCell className="text-muted-foreground">{ext.mail}</TableCell>
-                        <TableCell className="text-muted-foreground">{ext.mob || "—"}</TableCell>
-                        <TableCell>{ext.designation}</TableCell>
-                        <TableCell>{ext.organization || "—"}</TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => {
-                              // TODO: DELETE /api/external/${ext.id}
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                          No external reviewers registered
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                    ) : (
+                      filtered.map((ext) => (
+                        <TableRow key={ext.userId}>
+                          <TableCell className="font-medium">{ext.full_name}</TableCell>
+                          <TableCell className="text-muted-foreground">{ext.mail}</TableCell>
+                          <TableCell className="text-muted-foreground">{ext.mob || "—"}</TableCell>
+                          <TableCell>{ext.desg}</TableCell>
+                          <TableCell>{ext.organization || "—"}</TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(ext.userId)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>

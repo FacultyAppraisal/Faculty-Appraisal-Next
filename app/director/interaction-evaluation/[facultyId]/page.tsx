@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { motion } from "framer-motion";
@@ -21,6 +21,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/app/AuthProvider";
+import axios from "axios";
+
+const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
 
 interface EvaluationState {
   knowledge: string;
@@ -63,12 +67,43 @@ const CRITERIA = [
 function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const department = searchParams.get("department") ?? "";
+  const department = searchParams.get("department") ?? "pccoe";
+  const externalId = searchParams.get("externalId") ?? "";
   const { toast } = useToast();
+  const { token } = useAuth();
 
   const [evaluation, setEvaluation] = useState<EvaluationState>({ ...EMPTY_EVAL });
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
+
+  // Check if director already evaluated this faculty-external pair
+  useEffect(() => {
+    if (!token || !externalId) return;
+    (async () => {
+      try {
+        const res = await axios.get(
+          `${BACKEND}/interaction/${department}/evaluation/${externalId}/${facultyId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.data.success && res.data.data?.directorEvaluation?.evaluatorId) {
+          const d = res.data.data.directorEvaluation;
+          setEvaluation({
+            knowledge: String(d.knowledge ?? ""),
+            skills: String(d.skills ?? ""),
+            attributes: String(d.attributes ?? ""),
+            outcomesInitiatives: String(d.outcomesInitiatives ?? ""),
+            selfBranching: String(d.selfBranching ?? ""),
+            teamPerformance: String(d.teamPerformance ?? ""),
+            comments: d.comments ?? "",
+          });
+          setAlreadySubmitted(true);
+        }
+      } catch {
+        // Evaluation doesn't exist yet — that's fine
+      }
+    })();
+  }, [token, externalId, facultyId, department]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -84,27 +119,46 @@ function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string
     (["knowledge", "skills", "attributes", "outcomesInitiatives", "selfBranching", "teamPerformance"] as const)
       .reduce((sum, k) => sum + (parseInt(evaluation[k]) || 0), 0);
 
-  const handleSave = async (isSubmit: boolean) => {
-    if (isSubmit) {
-      const missing = Object.keys(MAX).filter((f) => evaluation[f as keyof EvaluationState] === "");
-      if (missing.length > 0) {
-        toast({ title: "Incomplete", description: "Please fill in all criteria.", variant: "destructive" });
-        return;
-      }
+  const handleSubmit = async () => {
+    const missing = Object.keys(MAX).filter((f) => evaluation[f as keyof EvaluationState] === "");
+    if (missing.length > 0) {
+      toast({ title: "Incomplete", description: "Please fill in all criteria.", variant: "destructive" });
+      return;
     }
+
+    if (!externalId) {
+      toast({ title: "Error", description: "External reviewer ID missing.", variant: "destructive" });
+      return;
+    }
+
     setSaving(true);
     try {
-      if (isSubmit) {
-        // TODO: POST /api/${department}/director_interaction_marks/${facultyId}
-        await new Promise((r) => setTimeout(r, 700));
-        toast({ title: "Evaluation submitted", description: "Director interaction marks saved." });
+      const response = await axios.post(
+        `${BACKEND}/interaction/${department}/evaluate/director/${externalId}/${facultyId}`,
+        {
+          knowledge: parseInt(evaluation.knowledge),
+          skills: parseInt(evaluation.skills),
+          attributes: parseInt(evaluation.attributes),
+          outcomesInitiatives: parseInt(evaluation.outcomesInitiatives),
+          selfBranching: parseInt(evaluation.selfBranching),
+          teamPerformance: parseInt(evaluation.teamPerformance),
+          comments: evaluation.comments,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        toast({ title: "Evaluation submitted", description: "Director interaction marks saved successfully." });
         router.push("/director/assign-external");
       } else {
-        await new Promise((r) => setTimeout(r, 300));
-        toast({ title: "Progress saved" });
+        toast({ title: "Error", description: response.data.message, variant: "destructive" });
       }
-    } catch {
-      toast({ title: "Error", description: "Failed to save.", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.response?.data?.message || "Failed to submit evaluation.",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
       setConfirmOpen(false);
@@ -116,8 +170,8 @@ function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string
       <div className="bg-indigo-700 px-6 py-4 text-white">
         <h1 className="text-xl font-bold">Director Interaction Evaluation</h1>
         <p className="text-indigo-200 text-sm mt-0.5">
-          Evaluating faculty <span className="font-mono font-semibold">{facultyId}</span>
-          {department && <> · {department}</>}
+          Evaluating <span className="font-mono font-semibold">{facultyId}</span>
+          {externalId && <> · External: <span className="font-mono">{externalId}</span></>}
         </p>
       </div>
 
@@ -143,7 +197,7 @@ function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string
                     <h2 className="text-xl font-bold text-foreground">Faculty ID: {facultyId}</h2>
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
                       <Briefcase size={14} className="text-indigo-600" />
-                      {department || "Department information loaded from API"}
+                      External: {externalId || "—"}
                     </div>
                   </div>
                 </div>
@@ -169,6 +223,7 @@ function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string
                       max={c.max}
                       placeholder={`0–${c.max}`}
                       className="w-24"
+                      disabled={alreadySubmitted}
                     />
                     <span className="text-sm text-muted-foreground">/ {c.max}</span>
                   </div>
@@ -187,6 +242,7 @@ function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string
                   onChange={handleChange}
                   placeholder="Additional feedback or comments..."
                   className="h-32 mt-2"
+                  disabled={alreadySubmitted}
                 />
               </CardContent>
             </Card>
@@ -204,12 +260,18 @@ function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string
             </Card>
           </motion.div>
 
-          <motion.div variants={itemVariants} className="mt-6 flex justify-between border-t pt-4">
-            <Button variant="secondary" onClick={() => handleSave(false)} disabled={saving}>
-              <Save size={15} className="mr-2" /> Save Progress
-            </Button>
-            <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setConfirmOpen(true)} disabled={saving}>
-              <Check size={15} className="mr-2" /> Submit Evaluation
+          <motion.div variants={itemVariants} className="mt-6 flex justify-end border-t pt-4 gap-3">
+            {alreadySubmitted && (
+              <span className="text-sm text-green-600 font-medium flex items-center gap-1 mr-auto">
+                ✓ Evaluation already submitted
+              </span>
+            )}
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => setConfirmOpen(true)}
+              disabled={saving || alreadySubmitted}
+            >
+              <Check size={15} className="mr-2" /> {alreadySubmitted ? "Already Submitted" : "Submit Evaluation"}
             </Button>
           </motion.div>
         </motion.div>
@@ -226,7 +288,7 @@ function DirectorInteractionEvaluationContent({ facultyId }: { facultyId: string
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => handleSave(true)}
+              onClick={handleSubmit}
               disabled={saving}
               className="bg-green-600 hover:bg-green-700"
             >

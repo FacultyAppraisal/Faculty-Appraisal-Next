@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
+import { Search, ChevronUp, ChevronDown, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { containerVariants, itemVariants } from "@/lib/animations";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -21,103 +24,223 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Building, Eye } from "lucide-react";
-import { useRouter } from "next/navigation";
+import axios from "axios";
+import { useAuth } from "@/app/AuthProvider";
+import Loader from "@/components/loader";
 
-interface FacultyRecord {
-  id: string;
-  name: string;
-  employeeId: string;
-  department: string;
-  designation: string;
-  status: string;
-  grandTotal: number | null;
-}
+const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
 
-const statusColors: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-  submitted: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  done: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  verification_pending: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  authority_verification_pending: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  interaction_pending: "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
-  portfolio_mark_pending: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300",
+// ── Status config ────────────────────────────────────────────────────────────
+
+type StatusKey =
+  | "pending"
+  | "verification_pending"
+  | "marks_verification_pending"
+  | "interaction_pending"
+  | "portfolio_mark_pending"
+  | "completed"
+  | "sent_to_director";
+
+const STATUS_CONFIG: Record<StatusKey, { label: string; className: string }> = {
+  pending: { label: "Pending", className: "border-gray-400 text-gray-600" },
+  verification_pending: { label: "Verification Pending", className: "bg-yellow-100 text-yellow-800 border-yellow-300" },
+  marks_verification_pending: { label: "Marks Verification Pending", className: "bg-orange-100 text-orange-800 border-orange-300" },
+  interaction_pending: { label: "Interaction Pending", className: "bg-blue-100 text-blue-800 border-blue-300" },
+  portfolio_mark_pending: { label: "Portfolio Marks Pending", className: "bg-purple-100 text-purple-800 border-purple-300" },
+  completed: { label: "Completed", className: "bg-green-100 text-green-800 border-green-300" },
+  sent_to_director: { label: "Sent to Director", className: "bg-indigo-100 text-indigo-800 border-indigo-300" },
 };
 
-const STATUS_OPTIONS = [
-  "all",
-  "pending",
-  "submitted",
-  "done",
-  "verification_pending",
-  "authority_verification_pending",
-  "interaction_pending",
-  "portfolio_mark_pending",
-];
+function StatusBadge({ status }: { status: string }) {
+  const key = (status?.toLowerCase().replace(/ /g, "_") ?? "pending") as StatusKey;
+  const cfg = STATUS_CONFIG[key] ?? STATUS_CONFIG["pending"];
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg.className}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+interface FacultyRow {
+  id: string;
+  name: string;
+  department: string;
+  designation: string;
+  status: StatusKey;
+  marks: number | null;
+}
+
+type SortKey = "name" | "marks";
+type SortDir = "asc" | "desc";
 
 export default function DirectorHodFormsPage() {
   const router = useRouter();
-  const [faculty, setFaculty] = useState<FacultyRecord[]>([]);
+  const { user, token } = useAuth();
   const [search, setSearch] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
+  const [data, setData] = useState<FacultyRow[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch HOD appraisals via the by-role endpoint
   useEffect(() => {
-    // TODO: GET /api/director/hod-faculty  (role === "HOD")
-    // setFaculty(data);
-    // setDepartments([...new Set(data.map(f => f.department))]);
-  }, []);
+    const fetchAppraisals = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
-  const filtered = faculty.filter((f) => {
-    const matchSearch =
-      f.name.toLowerCase().includes(search.toLowerCase()) ||
-      f.employeeId.toLowerCase().includes(search.toLowerCase());
-    const matchDept = departmentFilter === "all" || f.department === departmentFilter;
-    const matchStatus = statusFilter === "all" || f.status === statusFilter;
-    return matchSearch && matchDept && matchStatus;
-  });
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await axios.get(
+          `${BACKEND}/appraisal/by-role/hod`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
-  // Summary counts
-  const counts: Record<string, number> = {};
-  STATUS_OPTIONS.filter((s) => s !== "all").forEach((s) => {
-    counts[s] = faculty.filter((f) => f.status === s).length;
-  });
+        if (response.data.success) {
+          const appraisals = response.data.data || [];
+
+          const normalizeStatus = (status: string): StatusKey => {
+            if (!status) return "pending";
+            const normalized = status.toLowerCase().trim().replace(/\s+/g, "_");
+            const statusMap: Record<string, StatusKey> = {
+              "pending": "pending",
+              "verification_pending": "verification_pending",
+              "portfolio_marks_pending": "portfolio_mark_pending",
+              "interaction_pending": "interaction_pending",
+              "marks_verification_pending": "marks_verification_pending",
+              "completed": "completed",
+              "sent_to_director": "sent_to_director",
+            };
+            return statusMap[normalized] || "pending";
+          };
+
+          const facultyRows: FacultyRow[] = appraisals.map((appraisal: any) => ({
+            id: appraisal.userId,
+            name: appraisal.name || appraisal.userId,
+            department: appraisal.department || "Unknown",
+            designation: appraisal.designation,
+            status: normalizeStatus(appraisal.status),
+            marks: appraisal.summary?.grandTotalVerified ?? null,
+          }));
+
+          setData(facultyRows);
+          setDepartments([...new Set(facultyRows.map((f) => f.department))]);
+        } else {
+          setError(response.data.message || "Failed to fetch HOD appraisals");
+        }
+      } catch (err: any) {
+        console.error("Error fetching HOD appraisals:", err);
+        setError(err.response?.data?.message || "Failed to fetch HOD appraisals");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAppraisals();
+  }, [token]);
+
+  const toggleSort = (key: SortKey) => {
+    setSortConfig((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" }
+    );
+  };
+
+  const SortIcon = ({ col }: { col: SortKey }) =>
+    sortConfig.key === col ? (
+      sortConfig.dir === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+    ) : (
+      <ChevronDown size={14} className="opacity-30" />
+    );
+
+  const filtered = useMemo(() => {
+    return data
+      .filter((f) => {
+        const matchSearch =
+          f.name.toLowerCase().includes(search.toLowerCase()) ||
+          f.id.toLowerCase().includes(search.toLowerCase());
+        const matchStatus = statusFilter === "all" || f.status === statusFilter;
+        const matchDept = departmentFilter === "all" || f.department === departmentFilter;
+        return matchSearch && matchStatus && matchDept;
+      })
+      .sort((a, b) => {
+        const dir = sortConfig.dir === "asc" ? 1 : -1;
+        if (sortConfig.key === "marks") return ((a.marks ?? 0) - (b.marks ?? 0)) * dir;
+        return a.name.localeCompare(b.name) * dir;
+      });
+  }, [data, search, statusFilter, departmentFilter, sortConfig]);
+
+  const summary = useMemo(() => {
+    const counts: Record<string, number> = { total: data.length };
+    data.forEach((f) => { counts[f.status] = (counts[f.status] ?? 0) + 1; });
+    return counts;
+  }, [data]);
+
+  const summaryCards = [
+    { label: "Total HODs", value: summary.total ?? 0, cls: "bg-card border" },
+    { label: "Completed", value: summary.completed ?? 0, cls: "bg-green-50 dark:bg-green-900/20 border-green-200" },
+    { label: "Pending", value: summary.pending ?? 0, cls: "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" },
+  ];
+
+  if (loading) {
+    return <Loader message="Loading HOD appraisals..." />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Card className="max-w-md border-destructive/50">
+          <CardContent className="p-6 text-center">
+            <p className="text-destructive font-semibold mb-2">Error</p>
+            <p className="text-muted-foreground">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <motion.div
-      className="space-y-6"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
-      {/* Status summary pills */}
-      <motion.div variants={itemVariants} className="flex flex-wrap gap-2">
-        {Object.entries(counts).map(([status, count]) => (
-          <button
-            key={status}
-            onClick={() => setStatusFilter(statusFilter === status ? "all" : status)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-              statusFilter === status
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border bg-card text-muted-foreground hover:border-primary/50"
-            }`}
-          >
-            {status.replace(/_/g, " ")}: {count}
-          </button>
+    <>
+      {/* Summary strip */}
+      <motion.div
+        className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {summaryCards.map((c) => (
+          <motion.div key={c.label} variants={itemVariants}>
+            <Card className={`border ${c.cls}`}>
+              <CardContent className="p-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
+                <p className="text-2xl font-bold text-foreground mt-1">{c.value}</p>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
-        <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary">
-          Total: {faculty.length}
-        </span>
       </motion.div>
 
       {/* Filters */}
-      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-3">
+      <motion.div
+        className="flex flex-col sm:flex-row gap-3 mb-5"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Search className="absolute left-3 top-2.5 text-muted-foreground" size={16} />
           <Input
-            placeholder="Search by name or ID..."
+            placeholder="Search by name or ID…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -136,80 +259,108 @@ export default function DirectorHodFormsPage() {
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full sm:w-52">
-            <SelectValue placeholder="Status" />
+            <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
           <SelectContent>
-            {STATUS_OPTIONS.map((s) => (
-              <SelectItem key={s} value={s}>{s === "all" ? "All Status" : s.replace(/_/g, " ")}</SelectItem>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {(Object.keys(STATUS_CONFIG) as StatusKey[]).map((k) => (
+              <SelectItem key={k} value={k}>{STATUS_CONFIG[k].label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </motion.div>
 
       {/* Table */}
-      <motion.div variants={itemVariants}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Building className="h-4 w-4 text-primary" />
-              HOD Appraisals ({filtered.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Employee ID</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Designation</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Grand Total</TableHead>
-                    <TableHead className="text-center">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                        No HOD records found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filtered.map((f) => (
-                      <TableRow key={f.id}>
-                        <TableCell className="font-medium">{f.name}</TableCell>
-                        <TableCell className="text-muted-foreground font-mono text-sm">{f.employeeId}</TableCell>
-                        <TableCell>{f.department}</TableCell>
-                        <TableCell>{f.designation}</TableCell>
-                        <TableCell>
-                          <Badge className={statusColors[f.status] ?? "bg-gray-100 text-gray-800"}>
-                            {f.status.replace(/_/g, " ")}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-semibold">
-                          {f.grandTotal ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => router.push(`/director/director-verify?facultyId=${f.id}&department=${f.department}`)}
-                          >
-                            <Eye className="h-3.5 w-3.5 mr-1" />
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="rounded-xl border border-border overflow-hidden"
+      >
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <TableHead
+                className="cursor-pointer select-none"
+                onClick={() => toggleSort("name")}
+              >
+                <span className="inline-flex items-center gap-1">
+                  HOD <SortIcon col="name" />
+                </span>
+              </TableHead>
+              <TableHead>Department</TableHead>
+              <TableHead>Designation</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead
+                className="cursor-pointer select-none text-right"
+                onClick={() => toggleSort("marks")}
+              >
+                <span className="inline-flex items-center gap-1 float-right">
+                  Marks <SortIcon col="marks" />
+                </span>
+              </TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                  {data.length === 0
+                    ? "No HOD appraisals found."
+                    : "No results match the current filters."}
+                </TableCell>
+              </TableRow>
+            ) : (
+              filtered.map((f) => (
+                <TableRow key={f.id} className="hover:bg-muted/30 transition-colors">
+                  <TableCell>
+                    <p className="font-medium text-foreground">{f.name}</p>
+                    <p className="text-xs text-muted-foreground">{f.id}</p>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{f.department}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{f.designation}</TableCell>
+                  <TableCell><StatusBadge status={f.status} /></TableCell>
+                  <TableCell className="text-right font-semibold">
+                    {f.marks !== null ? f.marks.toFixed(2) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {f.status === "portfolio_mark_pending" && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="gap-1.5"
+                        onClick={() => router.push(`/director/portfolio-marking/${f.id}`)}
+                      >
+                        Mark Portfolio
+                      </Button>
+                    )}
+                    {f.status === "marks_verification_pending" && (
+                      <Button
+                        size="sm"
+                        className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => router.push(`/director/verify-marks/${f.id}`)}
+                      >
+                        Verify Marks
+                      </Button>
+                    )}
+                    {f.status !== "portfolio_mark_pending" && f.status !== "marks_verification_pending" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => router.push(`/director/director-verify?facultyId=${f.id}&department=${f.department}`)}
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1" />
+                        View
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
       </motion.div>
-    </motion.div>
+    </>
   );
 }
