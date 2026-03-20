@@ -12,8 +12,15 @@ import FormLockedModal from "../shared/FormLockedModal";
 import SuccessModal from "../shared/SuccessModal";
 import Loader from "@/components/loader";
 import axios, { AxiosError } from "axios";
+import { tokenManager } from "@/lib/api-client";
 
 const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
+const getAuthConfig = () => {
+  const token = tokenManager.getToken();
+  return token
+    ? { withCredentials: true, headers: { Authorization: `Bearer ${token}` } }
+    : { withCredentials: true };
+};
 
 // --- TYPES ---
 interface ExtraFormData {
@@ -88,7 +95,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
+        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, getAuthConfig());
         const appraisal = resp.data?.data;
         setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch { /* silently ignore */ }
@@ -116,7 +123,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
           } catch { /* ignore, proceed to fetch */ }
         }
 
-        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
+        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, getAuthConfig());
         // Backend wraps: { success, data: IFacultyAppraisal, message }
         const appraisal = resp.data?.data;
         const d = appraisal?.partE;
@@ -153,7 +160,7 @@ function PartEExtra({ userId }: PartEExtraProps) {
         totalClaimed: formData.totalClaimed,
         totalVerified: 0,
       };
-      await axios.put(`${BACKEND}/appraisal/${userId}/part-e`, payload, { withCredentials: true });
+      await axios.put(`${BACKEND}/appraisal/${userId}/part-e`, payload, getAuthConfig());
       setShowSuccessModal(true);
     } catch (err) {
       const axErr = err as AxiosError<{ message?: string }>;

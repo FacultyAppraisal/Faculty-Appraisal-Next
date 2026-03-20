@@ -11,8 +11,15 @@ import FormLockedModal from "../shared/FormLockedModal";
 import SuccessModal from "../shared/SuccessModal";
 import Loader from "@/components/loader";
 import axios, { AxiosError } from "axios";
+import { tokenManager } from "@/lib/api-client";
 
 const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
+const getAuthConfig = () => {
+  const token = tokenManager.getToken();
+  return token
+    ? { withCredentials: true, headers: { Authorization: `Bearer ${token}` } }
+    : { withCredentials: true };
+};
 
 // --- CONSTANTS ---
 const FORMULAS = {
@@ -192,7 +199,7 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
+        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, getAuthConfig());
         // Backend wraps: { success, data: IFacultyAppraisal, message }
         const appraisal = resp.data?.data;
         const d = appraisal?.partC;
@@ -279,7 +286,7 @@ function PartCSelfDevelopment({ userId, userDesignation }: PartCSelfDevelopmentP
         totalClaimed: totalScore,
         totalVerified: 0,
       };
-      await axios.put(`${BACKEND}/appraisal/${userId}/part-c`, payload, { withCredentials: true });
+      await axios.put(`${BACKEND}/appraisal/${userId}/part-c`, payload, getAuthConfig());
       setShowSuccessModal(true);
     } catch (err) {
       const axErr = err as AxiosError<{ message?: string }>;

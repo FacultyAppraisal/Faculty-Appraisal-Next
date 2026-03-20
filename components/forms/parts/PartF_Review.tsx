@@ -10,6 +10,12 @@ import { tokenManager } from "@/lib/api-client";
 import { useAuth } from "@/app/AuthProvider";
 
 const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
+const getAuthConfig = () => {
+  const token = tokenManager.getToken();
+  return token
+    ? { withCredentials: true, headers: { Authorization: `Bearer ${token}` } }
+    : { withCredentials: true };
+};
 
 // --- TYPES ---
 interface PartFReviewProps {
@@ -38,7 +44,7 @@ function PartFReview({ userId }: PartFReviewProps) {
   // -----------------------------------------------------------------------
   const fetchFormStatus = useCallback(async () => {
     try {
-      const { data } = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
+      const { data } = await axios.get(`${BACKEND}/appraisal/${userId}`, getAuthConfig());
       // Backend wraps: { success, data: IFacultyAppraisal, message }
       const appraisal = data?.data ?? data;
       setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
@@ -101,10 +107,10 @@ function PartFReview({ userId }: PartFReviewProps) {
       await axios.patch(
         `${BACKEND}/appraisal/${userId}/declaration`,
         { isAgreed: true },
-        { withCredentials: true }
+        getAuthConfig()
       );
       // Step 2: transition DRAFT → SUBMITTED
-      await axios.patch(`${BACKEND}/appraisal/${userId}/submit`, {}, { withCredentials: true });
+      await axios.patch(`${BACKEND}/appraisal/${userId}/submit`, {}, getAuthConfig());
       setIsFormFrozen(true);
       setShowFreezeModal(false);
       fetchFormStatus();

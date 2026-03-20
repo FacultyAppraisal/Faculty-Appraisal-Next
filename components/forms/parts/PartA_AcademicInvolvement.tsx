@@ -12,8 +12,15 @@ import FormLockedModal from "../shared/FormLockedModal";
 import SuccessModal from "../shared/SuccessModal";
 import Loader from "@/components/loader";
 import axios, { AxiosError } from "axios";
+import { tokenManager } from "@/lib/api-client";
 
 const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
+const getAuthConfig = () => {
+  const token = tokenManager.getToken();
+  return token
+    ? { withCredentials: true, headers: { Authorization: `Bearer ${token}` } }
+    : { withCredentials: true };
+};
 
 // --- CONSTANTS ---
 const ACADEMIC_SECTIONS: {
@@ -228,7 +235,7 @@ function PartAAcademicInvolvement({
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
+        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, getAuthConfig());
         const appraisal = (resp.data as any)?.data ?? resp.data;
         setFormStatus(appraisal?.status ?? APPRAISAL_STATUS.PEDING);
       } catch { /* silently ignore – status defaults to Pending */ }
@@ -240,7 +247,7 @@ function PartAAcademicInvolvement({
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, { withCredentials: true });
+        const resp = await axios.get(`${BACKEND}/appraisal/${userId}`, getAuthConfig());
         // Backend wraps: { success, data: IFacultyAppraisal, message }
         const appraisal = (resp.data as any)?.data ?? resp.data;
         const partA = appraisal?.partA;
@@ -530,7 +537,7 @@ function PartAAcademicInvolvement({
         totalVerified: 0,
       };
 
-      await axios.put(`${BACKEND}/appraisal/${userId}/part-a`, payload, { withCredentials: true });
+      await axios.put(`${BACKEND}/appraisal/${userId}/part-a`, payload, getAuthConfig());
       setShowSuccessModal(true);
     } catch (e) {
       const err = e as AxiosError<{ message?: string }>;
