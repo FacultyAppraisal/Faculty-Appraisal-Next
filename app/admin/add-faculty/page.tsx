@@ -1,7 +1,7 @@
 "use client";
 
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Check,
   User,
@@ -54,6 +54,7 @@ interface DeanSuggestion {
 }
 
 export default function AddFacultyPage() {
+  const DEAN_SUGGESTIONS_STALE_MS = 5 * 60 * 1000;
   const { toast } = useToast();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -61,6 +62,8 @@ export default function AddFacultyPage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [deanSuggestions, setDeanSuggestions] = useState<DeanSuggestion[]>([]);
   const [showDeanSuggestions, setShowDeanSuggestions] = useState(false);
+  const [isDeanSuggestionsLoading, setIsDeanSuggestionsLoading] = useState(false);
+  const deanSuggestionsFetchedAtRef = useRef<number>(0);
 
 
 
@@ -99,7 +102,17 @@ export default function AddFacultyPage() {
     };
   });
 
+  const shouldFetchDeanSuggestions = (): boolean => {
+    if (isDeanSuggestionsLoading) return false;
+    if (deanSuggestions.length === 0) return true;
+    const isStale = Date.now() - deanSuggestionsFetchedAtRef.current > DEAN_SUGGESTIONS_STALE_MS;
+    return isStale;
+  };
+
   const fetchDeanSuggestions = async () => {
+    if (!shouldFetchDeanSuggestions()) return;
+
+    setIsDeanSuggestionsLoading(true);
     try {
       const token = tokenManager.getToken();
       const headers: HeadersInit = {
@@ -132,6 +145,7 @@ export default function AddFacultyPage() {
         name: dean.name,
         dept: dean.department
       })));
+      deanSuggestionsFetchedAtRef.current = Date.now();
     } catch (error) {
       console.error("Error fetching dean suggestions:", error);
       toast({
@@ -140,6 +154,9 @@ export default function AddFacultyPage() {
         variant: "destructive",
       });
       setDeanSuggestions([]);
+      deanSuggestionsFetchedAtRef.current = 0;
+    } finally {
+      setIsDeanSuggestionsLoading(false);
     }
   };
 
