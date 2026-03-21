@@ -62,15 +62,16 @@ export default function AssignDeanToDepartmentPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const departments = [
-    { label: "Computer Engineering", value: "Computer" },
-    { label: "Information Technology", value: "IT" },
-    { label: "Mechanical Engineering", value: "Mechanical" },
-    { label: "Civil Engineering", value: "Civil" },
-    { label: "Electronics and Telecommunication", value: "ENTC" },
-    { label: "Computer Engineering (Regional)", value: "Computer(Regional)" },
-    { label: "AI and Machine Learning", value: "AIML" },
-    { label: "Applied Sciences and Humanities", value: "ASH" },
-  ];
+    { label: 'Computer Engineering', value: 'computer' },
+    { label: 'Information Technology', value: 'it' },
+    { label: 'Mechanical Engineering', value: 'mechanical' },
+    { label: 'Civil Engineering', value: 'civil' },
+    { label: 'Electronics and Telecommunication Engineering', value: 'entc' },
+    { label: 'Computer Engineering (Regional)', value: 'computer_regional' },
+    { label: 'Artificial Intelligence and Machine Learning', value: 'aiml' },
+    { label: 'Applied Sciences and Humanities', value: 'ash' },
+    { label: 'PCCOE - Institute Level', value: 'pccoe' },
+];
 
   useEffect(() => {
     fetchFacultyData();

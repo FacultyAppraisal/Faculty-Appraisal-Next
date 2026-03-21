@@ -131,6 +131,7 @@ const ROLE_CONFIG: Record<User["role"], RoleConfig> = {
           { icon: Building, label: "HOD Appraisals", href: "/director/hod-forms" },
           { icon: Users, label: "Dean Appraisals", href: "/director/dean-forms" },
           { icon: FileText, label: "Faculty Appraisals", href: "/director/faculty-forms" },
+          { icon: ClipboardList, label: "Sent Appraisals", href: "/director/sent-appraisals" },
           { icon: ClipboardList, label: "Final Marks", href: "/director/final-marks" },
         ],
       },
@@ -264,7 +265,6 @@ const ROLE_CONFIG: Record<User["role"], RoleConfig> = {
         collapsible: true,
         items: [
           { icon: Users, label: "Associate Deans", href: "/dean/associate-deans" },
-          { icon: ClipboardList, label: "Portfolio Evaluation", href: "/dean/evaluation-form" },
         ],
       },
       {
