@@ -218,7 +218,6 @@ const ROLE_CONFIG: Record<User["role"], RoleConfig> = {
         collapsible: true,
         items: [
           { icon: Users, label: "Department Faculty Forms", href: "/hod/faculty" },
-          { icon: GraduationCap, label: "Final Marks", href: "/hod/final-marks" },
         ],
       },
       {

@@ -61,7 +61,7 @@ interface FacultyRow {
   total_marks: number;
 }
 
-type SortKey = keyof Pick<FacultyRow, "name" | "verified_marks" | "portfolio_marks" | "total_marks">;
+type SortKey = keyof Pick<FacultyRow, "name" | "portfolio_marks" | "total_marks">;
 type SortDir = "asc" | "desc";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -80,6 +80,11 @@ export default function FinalReviewPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<FacultyRow | null>(null);
   const [sending, setSending] = useState(false);
+  const [minPortfolio, setMinPortfolio] = useState("");
+  const [maxPortfolio, setMaxPortfolio] = useState("");
+  const [minTotal, setMinTotal] = useState("");
+  const [maxTotal, setMaxTotal] = useState("");
+
 
   // Fetch faculty with "Completed" status
   useEffect(() => {
@@ -139,17 +144,27 @@ export default function FinalReviewPage() {
 
   const filtered = useMemo(() => {
     return data
-      .filter(
-        (f) =>
+      .filter((f) => {
+        const searchMatch =
           f.name.toLowerCase().includes(search.toLowerCase()) ||
-          f.id.toLowerCase().includes(search.toLowerCase())
-      )
+          f.id.toLowerCase().includes(search.toLowerCase());
+
+        const portfolioMatch =
+          (!minPortfolio || f.portfolio_marks >= Number(minPortfolio)) &&
+          (!maxPortfolio || f.portfolio_marks <= Number(maxPortfolio));
+
+        const totalMatch =
+          (!minTotal || f.total_marks >= Number(minTotal)) &&
+          (!maxTotal || f.total_marks <= Number(maxTotal));
+
+        return searchMatch && portfolioMatch && totalMatch;
+      })
       .sort((a, b) => {
         const dir = sortConfig.dir === "asc" ? 1 : -1;
         if (sortConfig.key === "name") return a.name.localeCompare(b.name) * dir;
         return ((a[sortConfig.key] as number) - (b[sortConfig.key] as number)) * dir;
       });
-  }, [data, search, sortConfig]);
+  }, [data, search, sortConfig, minPortfolio, maxPortfolio, minTotal, maxTotal]);
 
   const openConfirm = (row: FacultyRow) => {
     setConfirmTarget(row);
@@ -252,20 +267,60 @@ export default function FinalReviewPage() {
         ))}
       </motion.div>
 
-      {/* Search */}
+      {/* Toolbar */}
       <motion.div
-        className="flex gap-3 mb-5"
+        className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-5"
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
       >
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 text-muted-foreground" size={16} />
           <Input
             placeholder="Search by name or ID…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
+          />
+        </div>
+
+        {/* Portfolio marks filter */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Portfolio:</span>
+          <Input
+            type="number"
+            placeholder="Min"
+            value={minPortfolio}
+            onChange={(e) => setMinPortfolio(e.target.value)}
+            className="w-20"
+          />
+          <span className="text-muted-foreground text-sm">–</span>
+          <Input
+            type="number"
+            placeholder="Max"
+            value={maxPortfolio}
+            onChange={(e) => setMaxPortfolio(e.target.value)}
+            className="w-20"
+          />
+        </div>
+
+        {/* Total marks filter */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Total:</span>
+          <Input
+            type="number"
+            placeholder="Min"
+            value={minTotal}
+            onChange={(e) => setMinTotal(e.target.value)}
+            className="w-20"
+          />
+          <span className="text-muted-foreground text-sm">–</span>
+          <Input
+            type="number"
+            placeholder="Max"
+            value={maxTotal}
+            onChange={(e) => setMaxTotal(e.target.value)}
+            className="w-20"
           />
         </div>
       </motion.div>
@@ -284,9 +339,7 @@ export default function FinalReviewPage() {
                 <span className="inline-flex items-center gap-1">Faculty <SortIcon col="name" /></span>
               </TableHead>
               <TableHead>Designation</TableHead>
-              <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("verified_marks")}>
-                <span className="inline-flex items-center gap-1 float-right">Verified <SortIcon col="verified_marks" /></span>
-              </TableHead>
+
               <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("portfolio_marks")}>
                 <span className="inline-flex items-center gap-1 float-right">Portfolio <SortIcon col="portfolio_marks" /></span>
               </TableHead>
@@ -300,7 +353,7 @@ export default function FinalReviewPage() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-16 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
                   {data.length === 0
                     ? "No completed appraisals ready to send to Director."
                     : "No results match the search."}
@@ -314,7 +367,7 @@ export default function FinalReviewPage() {
                     <p className="text-xs text-muted-foreground">{f.id}</p>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{f.designation}</TableCell>
-                  <TableCell className="text-right font-semibold">{f.verified_marks.toFixed(2)}</TableCell>
+
                   <TableCell className="text-right font-semibold">{f.portfolio_marks.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-bold text-lg text-blue-700">{f.total_marks.toFixed(2)}</TableCell>
                   <TableCell className="text-center">
@@ -370,7 +423,6 @@ export default function FinalReviewPage() {
             final review.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Verified: <strong>{confirmTarget?.verified_marks.toFixed(2)}</strong> &nbsp;·&nbsp;
             Portfolio: <strong>{confirmTarget?.portfolio_marks.toFixed(2)}</strong> &nbsp;·&nbsp;
             Total: <strong>{confirmTarget?.total_marks.toFixed(2)}</strong>
           </p>

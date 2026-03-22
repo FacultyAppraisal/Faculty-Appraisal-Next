@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/app/AuthProvider";
 import axios from "axios";
+import { tokenManager } from "@/lib/api-client";
 
 const API_BASE = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000").replace(/\/$/, "");
 
@@ -77,7 +78,8 @@ export default function AddExternalFacultyPage() {
     setFetching(true);
     try {
       const response = await axios.get(`${API_BASE}/interaction/${dept}/get-externals`, {
-        withCredentials: true
+        withCredentials: true,
+        headers: { 'Authorization' : `Bearer ${tokenManager.getToken()}` }
       });
       if (response.data.success) {
         setExternalList(response.data.data || []);
@@ -113,7 +115,8 @@ export default function AddExternalFacultyPage() {
     setLoading(true);
     try {
       const response = await axios.post(`${API_BASE}/interaction/${dept}/create-external`, formData, {
-        withCredentials: true
+        withCredentials: true,
+        headers: { 'Authorization' : `Bearer ${tokenManager.getToken()}` }
       });
       if (response.data.success) {
         toast({ title: "External faculty added", description: `${formData.full_name} has been registered.` });
@@ -135,7 +138,8 @@ export default function AddExternalFacultyPage() {
     if (!deleteTarget || !dept) return;
     try {
       const response = await axios.delete(`${API_BASE}/interaction/${dept}/external/${deleteTarget.userId}`, {
-        withCredentials: true
+        withCredentials: true,
+        headers: { 'Authorization' : `Bearer ${tokenManager.getToken()}` }
       });
       if (response.data.success) {
         setExternalList((prev) => prev.filter((f) => f.userId !== deleteTarget.userId));
