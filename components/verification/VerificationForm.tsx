@@ -390,16 +390,16 @@ export default function VerificationForm() {
             id: "conference",
             title: "2. Conference Publications",
             metrics: [
-                { label: "Scopus/WoS Conference", name: "conferences_scopus", weight: 20, original: originalData?.conferences?.scopus },
-                { label: "Other Conference", name: "conferences_other", weight: 10, original: originalData?.conferences?.other },
+                { label: "Scopus/WoS Conference", name: "conferences_scopus", weight: 30, original: originalData?.conferences?.scopus },
+                { label: "Other Conference", name: "conferences_other", weight: 5, original: originalData?.conferences?.other },
             ]
         },
         {
             id: "bookChapters",
             title: "3. Book Chapters",
             metrics: [
-                { label: "Scopus/WoS Book Chapter", name: "bookChapters_scopus", weight: 20, original: originalData?.bookChapters?.scopus },
-                { label: "Other Book Chapter", name: "bookChapters_other", weight: 10, original: originalData?.bookChapters?.other },
+                { label: "Scopus/WoS Book Chapter", name: "bookChapters_scopus", weight: 30, original: originalData?.bookChapters?.scopus },
+                { label: "Other Book Chapter", name: "bookChapters_other", weight: 5, original: originalData?.bookChapters?.other },
             ],
             limit: SECTION_LIMITS.bookChapters
         },

@@ -2,13 +2,15 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, ChevronUp, ChevronDown, CheckCircle, Filter, AlertCircle, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
+import {
+  Search, ChevronUp, ChevronDown, CheckCircle, Filter, Send,
+  FileText, ExternalLink, Eye,
+} from "lucide-react";
 import { containerVariants, itemVariants } from "@/lib/animations";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -17,7 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/app/AuthProvider";
 import Loader from "@/components/loader";
 import axios from "axios";
@@ -26,30 +27,12 @@ const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5000")
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface FacultyData {
-  userId: string;
-  role: string;
-  designation: string;
-  department: string;
-  status: string;
-  summary: {
-    grandTotalClaimed: number;
-    grandTotalVerified: number;
-  };
-  partD: {
-    selfAwardedMarks: number;
-    hodMarks: number;
-    deanMarks: number;
-    totalClaimed: number;
-    totalVerified: number;
-  };
-}
-
 interface FacultyMarks {
   id: string;
   name: string;
+  department: string;
   designation: string;
-  status: string;
+  role: string;
   verified_marks: number;
   portfolio_marks: number;
   total_marks: number;
@@ -60,10 +43,9 @@ type SortDir = "asc" | "desc";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function FinalMarksPage() {
-  const { toast } = useToast();
+export default function SentAppraisalsPage() {
+  const { token } = useAuth();
   const router = useRouter();
-  const { user, token } = useAuth();
   const [data, setData] = useState<FacultyMarks[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,72 +56,49 @@ export default function FinalMarksPage() {
   });
   const [minMarks, setMinMarks] = useState("");
   const [maxMarks, setMaxMarks] = useState("");
-  const [sending, setSending] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
 
-  // Fetch faculty marks data
   useEffect(() => {
-    const fetchFacultyMarks = async () => {
-      if (!user?.department || !token) {
-        setLoading(false);
-        return;
-      }
-
+    const fetchData = async () => {
+      if (!token) { setLoading(false); return; }
       try {
         setLoading(true);
         setError(null);
-
-        const response = await axios.get(
-          `${BACKEND}/appraisal/department/${encodeURIComponent(user.department)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.data.success) {
-          const appraisals = response.data.data || [];
-          
-          // Filter and transform to show only faculty with "Completed" status
-          const facultyMarks: FacultyMarks[] = appraisals
-            .filter((appraisal: FacultyData) => 
-              appraisal.status?.toLowerCase().replace(/\s+/g, "_") === "completed"
-            )
-            .map((appraisal: FacultyData) => {
-              const verifiedMarks = appraisal.summary?.grandTotalVerified || 0;
-              const portfolioMarks = appraisal.partD?.hodMarks || appraisal.partD?.deanMarks || 0;
-              
-              return {
-                id: appraisal.userId,
-                name: appraisal.userId,
-                designation: appraisal.designation,
-                status: appraisal.status,
-                verified_marks: verifiedMarks,
-                portfolio_marks: portfolioMarks,
-                total_marks: verifiedMarks + portfolioMarks,
-              };
-            });
-
-          setData(facultyMarks);
+        const res = await axios.get(`${BACKEND}/appraisal/sent-to-director`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.data.success) {
+          const appraisals = res.data.data || [];
+          const rows: FacultyMarks[] = appraisals.map((a: any) => {
+            const verifiedMarks = a.summary?.grandTotalVerified || 0;
+            const portfolioMarks = a.partD?.hodMarks || a.partD?.deanMarks || 0;
+            return {
+              id: a.userId,
+              name: a.name || a.userId,
+              department: a.department || "Unknown",
+              designation: a.designation,
+              role: a.role,
+              verified_marks: verifiedMarks,
+              portfolio_marks: portfolioMarks,
+              total_marks: verifiedMarks + portfolioMarks,
+            };
+          });
+          setData(rows);
         } else {
-          setError(response.data.message || "Failed to fetch faculty marks");
+          setError(res.data.message || "Failed to fetch appraisals");
         }
       } catch (err: any) {
-        console.error("Error fetching faculty marks:", err);
-        setError(err.response?.data?.message || "Failed to fetch faculty marks");
+        setError(err.response?.data?.message || "Failed to fetch appraisals");
       } finally {
         setLoading(false);
       }
     };
-
-    fetchFacultyMarks();
-  }, [user?.department, token]);
+    fetchData();
+  }, [token]);
 
   const toggleSort = (key: SortKey) =>
     setSortConfig((prev) =>
-      prev.key === key
-        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: "desc" }
+      prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }
     );
 
   const SortIcon = ({ col }: { col: SortKey }) =>
@@ -155,11 +114,9 @@ export default function FinalMarksPage() {
         const searchMatch =
           f.name.toLowerCase().includes(search.toLowerCase()) ||
           f.id.toLowerCase().includes(search.toLowerCase());
-        
         const marksMatch =
           (!minMarks || f.total_marks >= Number(minMarks)) &&
           (!maxMarks || f.total_marks <= Number(maxMarks));
-
         return searchMatch && marksMatch;
       })
       .sort((a, b) => {
@@ -169,50 +126,45 @@ export default function FinalMarksPage() {
       });
   }, [data, search, sortConfig, minMarks, maxMarks]);
 
-  const handleSendToDirector = async (userId: string) => {
-    if (!window.confirm('Are you sure you want to send this appraisal to the Director?')) {
-      return;
-    }
-
-    setSending(userId);
+  const handleViewPDF = async (userId: string) => {
+    setPdfLoading(userId);
+    const newTab = window.open("about:blank", "_blank");
     try {
-      const response = await axios.patch(
-        `${BACKEND}/appraisal/${userId}/send-to-director`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.data.success) {
-        // Remove sent faculty from the list
-        setData((prev) => prev.filter((f) => f.id !== userId));
-        
-        toast({ 
-          title: "Sent to Director", 
-          description: "Appraisal has been sent to the Director successfully." 
-        });
-      } else {
-        throw new Error(response.data.message || "Failed to send to director");
-      }
-    } catch (err: any) {
-      console.error("Error sending to director:", err);
-      toast({ 
-        title: "Error", 
-        description: err.response?.data?.message || "Failed to send to director. Please try again.", 
-        variant: "destructive" 
+      const res = await axios.get(`${BACKEND}/appraisal/${userId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.data.success && res.data.data?.pdfUrl) {
+        if (newTab) {
+          newTab.location.href = res.data.data.pdfUrl;
+        } else {
+          window.open(res.data.data.pdfUrl, "_blank");
+        }
+      } else {
+        newTab?.close();
+        alert("Failed to generate PDF.");
+      }
+    } catch {
+      newTab?.close();
+      alert("Failed to generate PDF.");
     } finally {
-      setSending(null);
+      setPdfLoading(null);
     }
   };
 
   const summaryCards = [
-    { label: "Ready to Send", value: data.length, icon: Send, color: "text-green-600" },
-    { label: "Avg Verified Marks", value: data.length > 0 ? (data.reduce((sum, f) => sum + f.verified_marks, 0) / data.length).toFixed(2) : "0.00", icon: Filter, color: "text-blue-600" },
-    { label: "Avg Total Marks", value: data.length > 0 ? (data.reduce((sum, f) => sum + f.total_marks, 0) / data.length).toFixed(2) : "0.00", icon: CheckCircle, color: "text-purple-600" },
+    { label: "Total Received", value: data.length, icon: Send, color: "text-green-600" },
+    {
+      label: "Avg Verified Marks",
+      value: data.length > 0 ? (data.reduce((s, f) => s + f.verified_marks, 0) / data.length).toFixed(2) : "0.00",
+      icon: Filter,
+      color: "text-blue-600",
+    },
+    {
+      label: "Avg Total Marks",
+      value: data.length > 0 ? (data.reduce((s, f) => s + f.total_marks, 0) / data.length).toFixed(2) : "0.00",
+      icon: CheckCircle,
+      color: "text-purple-600",
+    },
   ];
 
   if (loading) {
@@ -279,8 +231,6 @@ export default function FinalMarksPage() {
             className="pl-9"
           />
         </div>
-
-        {/* Marks filter */}
         <div className="flex items-center gap-2">
           <Input
             type="number"
@@ -311,28 +261,20 @@ export default function FinalMarksPage() {
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("name")}>
-                <span className="inline-flex items-center gap-1">
-                  Faculty <SortIcon col="name" />
-                </span>
+                <span className="inline-flex items-center gap-1">Name <SortIcon col="name" /></span>
               </TableHead>
+              <TableHead>Department</TableHead>
               <TableHead>Designation</TableHead>
               <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("verified_marks")}>
-                <span className="inline-flex items-center gap-1 float-right">
-                  Verified Marks <SortIcon col="verified_marks" />
-                </span>
+                <span className="inline-flex items-center gap-1 float-right">Verified <SortIcon col="verified_marks" /></span>
               </TableHead>
               <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("portfolio_marks")}>
-                <span className="inline-flex items-center gap-1 float-right">
-                  Portfolio Marks <SortIcon col="portfolio_marks" />
-                </span>
+                <span className="inline-flex items-center gap-1 float-right">Portfolio <SortIcon col="portfolio_marks" /></span>
               </TableHead>
               <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("total_marks")}>
-                <span className="inline-flex items-center gap-1 float-right">
-                  Total Marks <SortIcon col="total_marks" />
-                </span>
+                <span className="inline-flex items-center gap-1 float-right">Total <SortIcon col="total_marks" /></span>
               </TableHead>
-              <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-center">Action</TableHead>
+              <TableHead className="text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -340,7 +282,7 @@ export default function FinalMarksPage() {
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-16 text-muted-foreground">
                   {data.length === 0
-                    ? "No completed appraisals ready to send to Director."
+                    ? "No appraisals have been sent by HODs yet."
                     : "No results match the current filters."}
                 </TableCell>
               </TableRow>
@@ -351,33 +293,33 @@ export default function FinalMarksPage() {
                     <p className="font-medium text-foreground">{f.name}</p>
                     <p className="text-xs text-muted-foreground">{f.id}</p>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {f.designation}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {f.verified_marks.toFixed(2)}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {f.portfolio_marks.toFixed(2)}
-                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{f.department}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{f.designation}</TableCell>
+                  <TableCell className="text-right font-semibold">{f.verified_marks.toFixed(2)}</TableCell>
+                  <TableCell className="text-right font-semibold">{f.portfolio_marks.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-bold text-lg text-blue-700">
                     {f.total_marks.toFixed(2)}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
-                      Completed
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Button
-                      onClick={() => handleSendToDirector(f.id)}
-                      disabled={sending === f.id}
-                      size="sm"
-                      className="gap-2 bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Send size={14} />
-                      {sending === f.id ? "Sending..." : "Send to Director"}
-                    </Button>
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        onClick={() => router.push(`/director/sent-appraisals/${f.id}`)}
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 text-xs"
+                      >
+                        <Eye size={13} /> View Summary
+                      </Button>
+                      <Button
+                        onClick={() => handleViewPDF(f.id)}
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 text-xs"
+                        disabled={pdfLoading === f.id}
+                      >
+                        <FileText size={13} /> {pdfLoading === f.id ? "Generating…" : "PDF"} <ExternalLink size={11} />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -385,12 +327,6 @@ export default function FinalMarksPage() {
           </TableBody>
         </Table>
       </motion.div>
-
-      {data.length > 0 && (
-        <p className="mt-4 text-xs text-muted-foreground">
-          Click <strong>Send to Director</strong> to forward completed appraisals to the Director for final review.
-        </p>
-      )}
     </>
   );
 }

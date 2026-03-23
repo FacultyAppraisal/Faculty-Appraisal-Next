@@ -8,7 +8,8 @@ export default function DirectorLayout({ children }: { children: ReactNode }) {
 
   const skipHeader =
     pathname === "/director/appraisal" ||
-    pathname.startsWith("/director/interaction-evaluation");
+    pathname.startsWith("/director/interaction-evaluation") ||
+    (pathname.startsWith("/director/sent-appraisals/") && pathname !== "/director/sent-appraisals");
 
   const header = useMemo(() => {
     switch (true) {
@@ -26,6 +27,8 @@ export default function DirectorLayout({ children }: { children: ReactNode }) {
         return { title: "Assign External Reviewer", description: "Assign external reviewers to faculty for interaction evaluation" };
       case pathname === "/director/director-verify":
         return { title: "Director Verification", description: "Verify portfolio marks and finalize appraisal" };
+      case pathname === "/director/sent-appraisals":
+        return { title: "Sent Appraisals", description: "View appraisals sent by HODs for director review" };
       default:
         return { title: "Director Dashboard", description: "Overview of all faculty appraisals and institutional management" };
     }
