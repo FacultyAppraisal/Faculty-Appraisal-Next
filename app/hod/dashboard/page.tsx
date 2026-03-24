@@ -211,7 +211,20 @@ export default function HodDashboardPage() {
             Your Department
           </p>
           <p className="text-lg font-bold text-foreground capitalize">
-            {user.department}
+            {(() => {
+              const deptMaps: Record<string, string> = {
+                'computer': 'Computer Engineering',
+                'it': 'Information Technology',
+                'mechanical': 'Mechanical Engineering',
+                'civil': 'Civil Engineering',
+                'entc': 'Electronics & Telecommunication',
+                'as': 'Applied Science & Humanities',
+                'aiml': 'AI & Machine Learning',
+                'ds': 'Data Science'
+              };
+              const d = user.department.toLowerCase();
+              return deptMaps[d] || user.department;
+            })()}
           </p>
         </motion.div>
       )}
