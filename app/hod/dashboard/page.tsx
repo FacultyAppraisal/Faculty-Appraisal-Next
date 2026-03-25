@@ -210,7 +210,7 @@ export default function HodDashboardPage() {
           <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground mb-1">
             Your Department
           </p>
-          <p className="text-lg font-bold text-foreground">
+          <p className="text-lg font-bold text-foreground capitalize">
             {(() => {
               const deptMaps: Record<string, string> = {
                 'computer': 'Computer Engineering',
