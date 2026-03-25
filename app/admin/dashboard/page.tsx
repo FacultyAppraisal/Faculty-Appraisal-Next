@@ -5,7 +5,6 @@ import { User, BookOpen, FileText, Building2, GraduationCap, CheckSquare } from 
 export default function AdminDashboardPage() {
   return (
     <Dashboard
-      userName="Admin"
       quickLinks={[
         {
           href: "/admin/profile",

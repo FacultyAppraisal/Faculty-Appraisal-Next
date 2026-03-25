@@ -37,7 +37,6 @@ export default function FacultyDashboardPage() {
   return (
     <>
       <Dashboard
-        userName="Faculty"
         quickLinks={[
           {
             href: "/faculty/appraisal?tab=A",

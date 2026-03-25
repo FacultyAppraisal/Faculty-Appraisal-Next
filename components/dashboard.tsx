@@ -3,6 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/app/AuthProvider";
 
 interface QuickLink {
   href?: string;
@@ -21,12 +22,14 @@ interface DashboardProps {
 }
 
 export default function Dashboard({
-  userName = "Faculty",
+  userName: propUserName,
   logoSrc = "/image.png",
   quickLinks,
   showWelcomeInfo = true,
   className = "",
 }: DashboardProps) {
+  const { user } = useAuth();
+  const userName = propUserName || user?.name || "User";
   return (
     <div className={cn("flex-1 p-6 md:p-10 bg-background min-h-screen", className)}>
       <div className="max-w-6xl mx-auto">
