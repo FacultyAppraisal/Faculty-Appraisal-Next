@@ -1,10 +1,8 @@
 "use client";
 import Dashboard from "@/components/dashboard";
 import { User, BookOpen, FileText, Building2, GraduationCap, CheckSquare } from "lucide-react";
-import { useAuth } from "@/app/AuthProvider";
 
 export default function AdminDashboardPage() {
-  const { user } = useAuth();
   return (
     <Dashboard
       quickLinks={[
