@@ -210,17 +210,18 @@ export default function HodDashboardPage() {
           <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground mb-1">
             Your Department
           </p>
-          <p className="text-lg font-bold text-foreground capitalize">
+          <p className="text-lg font-bold text-foreground">
             {(() => {
               const deptMaps: Record<string, string> = {
                 'computer': 'Computer Engineering',
                 'it': 'Information Technology',
                 'mechanical': 'Mechanical Engineering',
                 'civil': 'Civil Engineering',
-                'entc': 'Electronics & Telecommunication',
-                'as': 'Applied Science & Humanities',
-                'aiml': 'AI & Machine Learning',
-                'ds': 'Data Science'
+                'entc': 'Electronics and Telecommunication Engineering',
+                'computer_regional': 'Computer Engineering (Regional)',
+                'aiml': 'Artificial Intelligence and Machine Learning',
+                'ash': 'Applied Sciences and Humanities',
+                'pccoe': 'PCCOE - Institute Level'
               };
               const d = user.department.toLowerCase();
               return deptMaps[d] || user.department;
